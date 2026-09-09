@@ -47,8 +47,8 @@ export default function AdminCustomers({ loaderData }: Route.ComponentProps) {
               <th className="px-4 py-3 text-left font-medium">Name</th>
               <th className="px-4 py-3 text-left font-medium">Email</th>
               <th className="px-4 py-3 text-left font-medium">Orders</th>
-              <th className="px-4 py-3 text-left font-medium">Marketing</th>
-              <th className="px-4 py-3 text-left font-medium">Joined</th>
+              <th className="hidden px-4 py-3 text-left font-medium md:table-cell">Marketing</th>
+              <th className="hidden px-4 py-3 text-left font-medium md:table-cell">Joined</th>
             </tr>
           </thead>
           <tbody>
@@ -64,12 +64,12 @@ export default function AdminCustomers({ loaderData }: Route.ComponentProps) {
                   <td className="px-4 py-3 font-medium text-navy">
                     {customer.name ?? "—"}
                   </td>
-                  <td className="px-4 py-3">{customer.email}</td>
+                  <td className="max-w-[140px] truncate px-4 py-3">{customer.email}</td>
                   <td className="px-4 py-3">{customer.orderCount}</td>
-                  <td className="px-4 py-3">
+                  <td className="hidden px-4 py-3 md:table-cell">
                     {customer.marketingOptIn ? "Yes" : "No"}
                   </td>
-                  <td className="px-4 py-3 text-charcoal/60">
+                  <td className="hidden px-4 py-3 text-charcoal/60 md:table-cell">
                     {new Date(customer.createdAt).toLocaleDateString()}
                   </td>
                 </tr>

@@ -180,7 +180,7 @@ export default function AdminHomepageBlocks({ loaderData, actionData }: Route.Co
                     <input type="hidden" name="intent" value="reorder" />
                     <input type="hidden" name="id" value={block.id} />
                     <input type="hidden" name="direction" value="up" />
-                    <Button type="submit" size="sm" variant="ghost" disabled={index === 0}>
+                    <Button type="submit" size="sm" variant="ghost" className="min-w-11" disabled={index === 0}>
                       ↑
                     </Button>
                   </Form>
@@ -192,6 +192,7 @@ export default function AdminHomepageBlocks({ loaderData, actionData }: Route.Co
                       type="submit"
                       size="sm"
                       variant="ghost"
+                      className="min-w-11"
                       disabled={index === blocks.length - 1}
                     >
                       ↓
@@ -200,14 +201,14 @@ export default function AdminHomepageBlocks({ loaderData, actionData }: Route.Co
                   <Form method="post">
                     <input type="hidden" name="intent" value="toggle" />
                     <input type="hidden" name="id" value={block.id} />
-                    <Button type="submit" size="sm" variant="outline">
+                    <Button type="submit" size="sm" variant="outline" className="min-h-11">
                       Toggle
                     </Button>
                   </Form>
                   <Form method="post">
                     <input type="hidden" name="intent" value="delete" />
                     <input type="hidden" name="id" value={block.id} />
-                    <Button type="submit" size="sm" variant="outline" className="text-red-600">
+                    <Button type="submit" size="sm" variant="outline" className="min-h-11 text-red-600">
                       Delete
                     </Button>
                   </Form>

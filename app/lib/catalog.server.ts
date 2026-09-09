@@ -23,7 +23,7 @@ export const productCardSelect = {
 
 type FilterSource = {
   fabricType: { slug: string; name: string } | null;
-  variants: Array<{ colorName: string }>;
+  variants: Array<{ colorName: string; colorHex?: string }>;
 };
 
 function categoryWhere(slug?: string): Prisma.ProductWhereInput {
@@ -43,13 +43,22 @@ function productOrderBy(sort: string): Prisma.ProductOrderByWithRelationInput {
 }
 
 function deriveFilters(products: FilterSource[]) {
-  const colors = [
-    ...new Set(products.flatMap((p) => p.variants.map((v) => v.colorName))),
-  ].sort();
+  const colorMap = new Map<string, string>();
+  for (const product of products) {
+    for (const variant of product.variants) {
+      if (!colorMap.has(variant.colorName)) {
+        colorMap.set(variant.colorName, variant.colorHex ?? "#CCCCCC");
+      }
+    }
+  }
+
+  const colors = [...colorMap.entries()]
+    .map(([name, hex]) => ({ name, hex }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const fabricMap = new Map<string, string>();
-  for (const p of products) {
-    if (p.fabricType) fabricMap.set(p.fabricType.slug, p.fabricType.name);
+  for (const product of products) {
+    if (product.fabricType) fabricMap.set(product.fabricType.slug, product.fabricType.name);
   }
 
   return {
@@ -60,7 +69,10 @@ function deriveFilters(products: FilterSource[]) {
 
 export type ShopListingResult = {
   products: ProductCardData[];
-  filters: { colors: string[]; fabrics: Array<{ slug: string; name: string }> };
+  filters: {
+    colors: Array<{ name: string; hex: string }>;
+    fabrics: Array<{ slug: string; name: string }>;
+  };
   activeFilters: { color: string | null; fabric: string | null; sort: string };
   cloudName: string | undefined;
 };
@@ -118,7 +130,7 @@ export async function loadShopListing(opts: {
       where: { status: "active", ...categoryFilter },
       select: {
         fabricType: { select: { slug: true, name: true } },
-        variants: { select: { colorName: true } },
+        variants: { select: { colorName: true, colorHex: true } },
       },
     }),
   ]);

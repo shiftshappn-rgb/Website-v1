@@ -36,37 +36,54 @@ function ProductImage({
   );
 }
 
+function ColorSwatches({
+  slug,
+  colors,
+}: {
+  slug: string;
+  colors: Array<{ name: string; hex: string }>;
+}) {
+  if (colors.length === 0) return null;
+
+  return (
+    <div className="flex items-center gap-1.5">
+      {colors.slice(0, 5).map((color) => (
+        <Link
+          key={color.name}
+          to={`/products/${slug}?color=${encodeURIComponent(color.name)}`}
+          prefetch="intent"
+          title={color.name}
+          aria-label={`View ${color.name}`}
+          className="h-8 w-8 rounded-full border border-charcoal/15 transition-transform hover:scale-110 hover:ring-2 hover:ring-navy/25 sm:h-4 sm:w-4"
+          style={{ backgroundColor: color.hex }}
+        />
+      ))}
+      {colors.length > 5 && (
+        <span className="text-xs text-charcoal/50">+{colors.length - 5}</span>
+      )}
+    </div>
+  );
+}
+
 export function ProductCard({ product, cloudName }: ProductCardProps) {
   const price = Number(product.basePrice);
   const compareAt = product.compareAtPrice != null ? Number(product.compareAtPrice) : null;
   const colors = product.colors ?? [];
 
   return (
-    <Link to={`/products/${product.slug}`} prefetch="intent" className="group block">
-      <ProductImage
-        publicId={product.imagePublicId}
-        alt={product.imageAlt ?? product.name}
-        cloudName={cloudName}
-      />
-      <div className="mt-3 space-y-2">
-        <h3 className="text-sm font-medium text-charcoal group-hover:text-navy transition-colors line-clamp-2">
+    <article className="group">
+      <Link to={`/products/${product.slug}`} prefetch="intent" className="block">
+        <ProductImage
+          publicId={product.imagePublicId}
+          alt={product.imageAlt ?? product.name}
+          cloudName={cloudName}
+        />
+        <h3 className="mt-3 text-sm font-medium text-charcoal transition-colors line-clamp-2 group-hover:text-navy">
           {product.name}
         </h3>
-        {colors.length > 0 && (
-          <div className="flex items-center gap-1.5">
-            {colors.slice(0, 5).map((color) => (
-              <span
-                key={color.name}
-                title={color.name}
-                className="w-4 h-4 rounded-full border border-charcoal/15"
-                style={{ backgroundColor: color.hex }}
-              />
-            ))}
-            {colors.length > 5 && (
-              <span className="text-xs text-charcoal/50">+{colors.length - 5}</span>
-            )}
-          </div>
-        )}
+      </Link>
+      <div className="mt-2 space-y-2">
+        <ColorSwatches slug={product.slug} colors={colors} />
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-navy">
             {formatCurrency(price)}
@@ -78,7 +95,7 @@ export function ProductCard({ product, cloudName }: ProductCardProps) {
           )}
         </div>
       </div>
-    </Link>
+    </article>
   );
 }
 
@@ -98,7 +115,7 @@ export function ProductGrid({
   }
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-6">
+    <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 lg:gap-6 xl:grid-cols-4">
       {products.map((product) => (
         <ProductCard key={product.id} product={product} cloudName={cloudName} />
       ))}

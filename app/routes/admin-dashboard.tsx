@@ -353,17 +353,17 @@ export default function AdminDashboard({ loaderData }: Route.ComponentProps) {
             <table className="w-full text-sm">
               <thead className="bg-sand/50 text-left text-xs uppercase tracking-wide text-charcoal/50">
                 <tr>
-                  <th className="px-6 py-3 font-medium">Order</th>
+                  <th className="px-4 py-3 font-medium md:px-6">Order</th>
                   <th className="px-4 py-3 font-medium">Customer</th>
-                  <th className="px-4 py-3 font-medium">Items</th>
+                  <th className="hidden px-4 py-3 font-medium md:table-cell">Items</th>
                   <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-6 py-3 text-right font-medium">Total</th>
+                  <th className="px-4 py-3 text-right font-medium md:px-6">Total</th>
                 </tr>
               </thead>
               <tbody>
                 {recentOrders.map((order) => (
                   <tr key={order.id} className="border-t border-charcoal/5 hover:bg-sand/30">
-                    <td className="px-6 py-3">
+                    <td className="px-4 py-3 md:px-6">
                       <Link to={`/admin/orders/${order.id}`} prefetch="intent" className="font-medium text-navy hover:text-terracotta">
                         {order.orderNumber}
                       </Link>
@@ -376,12 +376,12 @@ export default function AdminDashboard({ loaderData }: Route.ComponentProps) {
                         })}
                       </p>
                     </td>
-                    <td className="px-4 py-3 text-charcoal/80">{order.email}</td>
-                    <td className="px-4 py-3 tabular-nums text-charcoal/70">{order.itemCount}</td>
+                    <td className="max-w-[140px] truncate px-4 py-3 text-charcoal/80">{order.email}</td>
+                    <td className="hidden px-4 py-3 tabular-nums text-charcoal/70 md:table-cell">{order.itemCount}</td>
                     <td className="px-4 py-3">
                       <Badge variant={orderStatusVariant[order.status]}>{order.status}</Badge>
                     </td>
-                    <td className="px-6 py-3 text-right tabular-nums font-medium text-navy">
+                    <td className="px-4 py-3 text-right tabular-nums font-medium text-navy md:px-6">
                       {formatCurrency(order.total)}
                     </td>
                   </tr>

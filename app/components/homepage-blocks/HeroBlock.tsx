@@ -69,18 +69,20 @@ export function HeroBlock({
   const shopLink = audience === "women" ? "/shop/women" : "/shop/men";
 
   return (
-    <section className="bg-sand px-6 pt-6 pb-6 sm:px-10 sm:pt-8 sm:pb-8 lg:px-14 lg:pt-10 lg:pb-10">
+    <section className="bg-sand px-4 pt-4 pb-4 sm:px-10 sm:pt-8 sm:pb-8 lg:px-14 lg:pt-10 lg:pb-10">
       <div
-        className={`hero-stage relative min-h-[calc(100svh-7.5rem)] overflow-hidden rounded-4xl transition-colors duration-700 sm:min-h-[calc(100svh-10rem)] sm:rounded-[2.5rem] lg:min-h-[calc(100svh-12rem)] lg:rounded-[3rem] ${
+        className={`hero-stage relative min-h-[72svh] overflow-hidden rounded-3xl transition-colors duration-700 sm:min-h-[calc(100svh-10rem)] sm:rounded-[2.5rem] lg:min-h-[calc(100svh-12rem)] lg:rounded-[3rem] ${
           audience === "women" ? "bg-sage" : "bg-navy"
         }`}
       >
         <h1 className="sr-only">{content.headline}</h1>
 
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-2 pt-16 sm:pt-14 lg:pt-10">
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-1 flex justify-center px-5 pt-20 sm:inset-0 sm:items-center sm:justify-center sm:px-2 sm:pt-16 lg:pt-10">
           <p
-            className={`hero-wordmark animate-enter-left text-center text-[22vw] lg:text-[18vw] ${
-              audience === "men" ? "text-white/90" : "text-white"
+            className={`hero-wordmark animate-enter-left text-center text-[24vw] sm:text-[22vw] lg:text-[18vw] ${
+              audience === "men"
+                ? "text-white/28 sm:text-white/15"
+                : "text-white/28 sm:text-white/20"
             }`}
             aria-hidden
           >
@@ -92,9 +94,9 @@ export function HeroBlock({
           </p>
         </div>
 
-        <div className="animate-hero-media hero-models pointer-events-none absolute inset-x-0 -bottom-2 top-0 z-10 flex items-end justify-center sm:bottom-0">
-          <div className="relative left-1/2 h-full w-[118%] -translate-x-1/2 lg:w-[124%]">
-            <div className="absolute left-[4%] top-[6%] z-10 sm:left-[10%] sm:top-[10%]">
+        <div className="animate-hero-media hero-models pointer-events-none absolute inset-x-0 -bottom-2 top-0 z-10 flex items-end justify-center sm:bottom-0 sm:justify-end">
+          <div className="relative h-full w-full sm:w-[78%] lg:w-[70%]">
+            <div className="absolute left-[4%] top-[6%] z-10 hidden sm:block sm:left-[10%] sm:top-[10%]">
               <SparkMarks />
             </div>
             <div className="hero-model-floor" />
@@ -111,43 +113,89 @@ export function HeroBlock({
           </div>
         </div>
 
-        <div className="absolute inset-x-8 bottom-8 z-20 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between lg:inset-x-12 lg:bottom-10">
-          <Link
-            to={shopLink}
-            prefetch="intent"
-            className="group inline-flex max-w-full items-center gap-3 rounded-full bg-white py-2 pl-5 pr-2 text-sm font-semibold text-charcoal shadow-sm transition-transform duration-300 hover:scale-[1.02] sm:text-base"
-          >
-            <span className="truncate">
-              {audience === "women" ? "Shop women" : "Shop men"}
-            </span>
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold text-charcoal transition-transform duration-300 group-hover:translate-x-0.5">
-              <ArrowRight className="h-4 w-4" />
-            </span>
-          </Link>
+        {/* ── Bottom CTA ── */}
+        <div className="absolute inset-x-0 bottom-0 z-20 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-8 lg:pb-10">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-linear-to-t from-charcoal/35 to-transparent sm:h-44 sm:from-charcoal/35 sm:via-charcoal/10" />
 
-          <div
-            className="flex w-fit items-center rounded-full bg-white p-1 shadow-sm"
-            role="group"
-            aria-label="Shop audience"
-          >
-            {(["women", "men"] as const).map((option) => {
-              const selected = audience === option;
-              return (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setAudience(option)}
-                  className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] transition-colors ${
-                    selected
-                      ? "bg-gold text-charcoal"
-                      : "text-charcoal/55 hover:text-charcoal"
-                  }`}
-                  aria-pressed={selected}
-                >
-                  {option}
-                </button>
-              );
-            })}
+          <div className="relative mx-4 flex flex-col items-start gap-2 sm:hidden">
+            <div
+              className="flex h-10 w-fit items-center rounded-full bg-white/85 p-0.5 shadow-[0_8px_20px_rgba(17,26,34,0.16)] backdrop-blur-sm"
+              role="group"
+              aria-label="Shop audience"
+            >
+              {(["women", "men"] as const).map((option) => {
+                const selected = audience === option;
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setAudience(option)}
+                    className={`h-full rounded-full px-3.5 text-[11px] font-bold uppercase tracking-wider transition-all duration-200 ${
+                      selected
+                        ? "bg-gold text-charcoal shadow-sm"
+                        : "text-charcoal/40"
+                    }`}
+                    aria-pressed={selected}
+                  >
+                    {option}
+                  </button>
+                );
+              })}
+            </div>
+
+            <Link
+              to={shopLink}
+              prefetch="intent"
+              className="group inline-flex h-11 items-center gap-2.5 rounded-full bg-white/95 pl-4 pr-1 text-[13px] font-semibold text-charcoal shadow-[0_8px_20px_rgba(17,26,34,0.16)] backdrop-blur-sm transition-transform duration-200 hover:scale-[1.02]"
+            >
+              <span>
+                {audience === "women" ? "Shop women" : "Shop men"}
+              </span>
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gold text-charcoal transition-transform duration-300 group-hover:translate-x-0.5">
+                <ArrowRight className="h-3.5 w-3.5" />
+              </span>
+            </Link>
+          </div>
+
+          {/* Desktop: CTA + toggle row */}
+          <div className="relative mx-8 hidden sm:flex sm:items-center sm:justify-between lg:mx-12">
+            <Link
+              to={shopLink}
+              prefetch="intent"
+              className="group inline-flex items-center gap-3 rounded-full bg-white py-2 pl-5 pr-2 text-base font-semibold text-charcoal shadow-[0_10px_28px_rgba(17,26,34,0.18)] transition-transform duration-200 hover:scale-[1.02]"
+            >
+              <span>
+                {audience === "women" ? "Shop women" : "Shop men"}
+              </span>
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold text-charcoal transition-transform duration-300 group-hover:translate-x-0.5">
+                <ArrowRight className="h-4 w-4" />
+              </span>
+            </Link>
+
+            <div
+              className="flex items-center rounded-full bg-white p-1 shadow-[0_10px_28px_rgba(17,26,34,0.18)]"
+              role="group"
+              aria-label="Shop audience"
+            >
+              {(["women", "men"] as const).map((option) => {
+                const selected = audience === option;
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setAudience(option)}
+                    className={`min-h-10 rounded-full px-5 py-2.5 text-xs font-semibold uppercase tracking-[0.16em] transition-colors ${
+                      selected
+                        ? "bg-gold text-charcoal"
+                        : "text-charcoal/50 hover:text-charcoal"
+                    }`}
+                    aria-pressed={selected}
+                  >
+                    {option}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>

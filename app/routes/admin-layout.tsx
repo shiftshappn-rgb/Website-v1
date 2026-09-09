@@ -48,11 +48,11 @@ export default function AdminLayout({ loaderData }: Route.ComponentProps) {
       <AdminSidebar />
       <main
         className={cn(
-          "flex-1 overflow-auto lg:ml-0 transition-opacity duration-200",
+          "flex-1 overflow-auto overflow-x-hidden transition-opacity duration-200",
           pending && "opacity-80"
         )}
       >
-        <div className="p-4 pt-16 lg:p-8 lg:pt-8">
+        <div className="p-4 pt-[max(4rem,calc(env(safe-area-inset-top)+3.5rem))] pb-[max(1rem,env(safe-area-inset-bottom))] lg:p-8 lg:pt-8">
           <Outlet />
         </div>
       </main>

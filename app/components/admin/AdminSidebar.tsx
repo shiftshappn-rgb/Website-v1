@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Form, NavLink } from "react-router";
 import { cn } from "~/lib/utils";
 
@@ -22,12 +22,35 @@ export function AdminSidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  useEffect(() => {
+    if (!mobileOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setMobileOpen(false);
+    }
+
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [mobileOpen]);
+
   return (
     <>
       <button
         type="button"
-        className="fixed left-4 top-4 z-50 rounded-lg bg-navy p-2 text-white lg:hidden"
+        className={cn(
+          "fixed z-50 flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-navy text-white lg:hidden",
+          mobileOpen
+            ? "top-4 right-4 left-auto"
+            : "top-[max(1rem,env(safe-area-inset-top))] left-4"
+        )}
         onClick={() => setMobileOpen(!mobileOpen)}
+        aria-expanded={mobileOpen}
         aria-label="Toggle navigation"
       >
         {mobileOpen ? "✕" : "☰"}
@@ -54,7 +77,7 @@ export function AdminSidebar() {
           )}
           <button
             type="button"
-            className="hidden rounded p-1 text-white/70 hover:text-white lg:block"
+            className="hidden min-h-11 min-w-11 items-center justify-center rounded p-1 text-white/70 hover:text-white lg:flex"
             onClick={() => setCollapsed(!collapsed)}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
@@ -72,7 +95,7 @@ export function AdminSidebar() {
               onClick={() => setMobileOpen(false)}
               className={({ isActive }) =>
                 cn(
-                  "flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                  "flex min-h-11 items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
                   isActive
                     ? "bg-navy text-white"
                     : "text-white/70 hover:bg-white/10 hover:text-white"
@@ -90,7 +113,7 @@ export function AdminSidebar() {
             <button
               type="submit"
               className={cn(
-                "flex w-full items-center rounded-lg px-3 py-2.5 text-sm font-medium text-terracotta transition-colors hover:bg-white/10",
+                "flex min-h-11 w-full items-center rounded-lg px-3 py-2.5 text-sm font-medium text-terracotta transition-colors hover:bg-white/10",
                 collapsed && "justify-center"
               )}
             >

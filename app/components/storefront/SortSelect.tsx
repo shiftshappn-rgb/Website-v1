@@ -19,12 +19,13 @@ export function SortSelect({ value }: { value: string }) {
   }
 
   return (
-    <label className="inline-flex items-center gap-2 text-sm text-charcoal/70">
-      <span className="sr-only sm:not-sr-only">Sort</span>
+    <label className="inline-flex w-full items-center gap-2 text-sm text-charcoal/70 sm:w-auto">
+      <span>Sort</span>
       <select
         value={value}
         onChange={(e) => handleChange(e.target.value)}
-        className="rounded-lg border border-charcoal/20 bg-white px-3 py-2 text-sm text-charcoal focus:border-navy focus:outline-none focus:ring-1 focus:ring-navy"
+        aria-label="Sort products"
+        className="max-w-[11rem] truncate rounded-lg border border-charcoal/20 bg-white px-3 py-2 text-sm text-charcoal focus:border-navy focus:outline-none focus:ring-1 focus:ring-navy sm:max-w-none"
       >
         {SORT_OPTIONS.map((option) => (
           <option key={option.value} value={option.value}>

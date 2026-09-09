@@ -28,7 +28,7 @@ export default function ShopColour({ loaderData }: Route.ComponentProps) {
         <p className="mt-2 text-charcoal/70">Select a colour to browse matching scrubs</p>
       </header>
 
-      <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-4 mb-12">
+      <div className="mb-12 grid grid-cols-3 gap-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10">
         {colors.map((color) => (
           <Link
             key={color.name}

@@ -35,7 +35,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
   });
 }
 
-export async function loader({ params }: Route.LoaderArgs) {
+export async function loader({ params, request }: Route.LoaderArgs) {
   if (!isDatabaseAvailable()) {
     throw data("Product not found", { status: 404 });
   }
@@ -68,11 +68,14 @@ export async function loader({ params }: Route.LoaderArgs) {
       ? product.reviews.reduce((sum, r) => sum + r.rating, 0) / product.reviews.length
       : null;
 
+  const requestedColor = new URL(request.url).searchParams.get("color");
+
   return {
     product: serialized,
     reviews: product.reviews,
     avgRating,
     cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+    initialColor: requestedColor,
   };
 }
 
@@ -104,12 +107,25 @@ function AccordionSection({
   );
 }
 
+function resolveInitialColor(
+  colors: Array<{ colorName: string }>,
+  requestedColor: string | null
+) {
+  if (!requestedColor) return colors[0]?.colorName ?? "";
+  const match = colors.find(
+    (color) => color.colorName.toLowerCase() === requestedColor.toLowerCase()
+  );
+  return match?.colorName ?? colors[0]?.colorName ?? "";
+}
+
 export default function ProductDetail({ loaderData }: Route.ComponentProps) {
-  const { product, reviews, avgRating, cloudName } = loaderData;
+  const { product, reviews, avgRating, cloudName, initialColor } = loaderData;
   const addItem = useCart((s) => s.addItem);
   const colors = getProductColors(product);
 
-  const [selectedColor, setSelectedColor] = useState(colors[0]?.colorName ?? "");
+  const [selectedColor, setSelectedColor] = useState(() =>
+    resolveInitialColor(colors, initialColor)
+  );
   const sizesForColor = useMemo(
     () => product.variants.filter((v) => v.colorName === selectedColor),
     [product.variants, selectedColor]
@@ -187,14 +203,14 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
               )}
             </div>
             {images.length > 1 && (
-              <div className="flex gap-2 overflow-x-auto">
+              <div className="flex snap-x gap-2 overflow-x-auto pb-2">
                 {images.map((img, i) => (
                   <button
                     key={i}
                     type="button"
                     onClick={() => setActiveImage(i)}
                     className={cn(
-                      "w-16 h-20 rounded-lg overflow-hidden flex-shrink-0 border-2",
+                      "h-20 min-h-11 w-16 shrink-0 snap-start overflow-hidden rounded-lg border-2",
                       activeImage === i ? "border-navy" : "border-transparent"
                     )}
                   >
@@ -263,7 +279,7 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
                         if (firstSize) setSelectedSize(firstSize);
                       }}
                       className={cn(
-                        "w-10 h-10 rounded-full border-2 transition-transform hover:scale-105",
+                        "h-11 w-11 rounded-full border-2 transition-transform hover:scale-105",
                         selectedColor === color.colorName
                           ? "border-navy ring-2 ring-navy/20"
                           : "border-charcoal/15"

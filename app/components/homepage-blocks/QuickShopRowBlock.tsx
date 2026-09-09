@@ -12,16 +12,16 @@ export function QuickShopRowBlock({
   return (
     <section ref={revealRef} className="section-cream">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
-        <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
+        <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1 scrollbar-none sm:mx-0 sm:px-0">
           {content.items.map((item, index) => (
             <div
               key={item.link + item.label}
-              className="animate-on-scroll shrink-0"
+              className="animate-on-scroll shrink-0 snap-start"
               style={{ "--stagger-delay": `${index * 60}ms` } as CSSProperties}
             >
               <Link
                 to={item.link}
-                className="inline-flex items-center gap-2.5 rounded-full bg-sand px-5 py-2.5 text-sm font-medium text-charcoal shadow-sm transition-all duration-300 hover:scale-105 hover:bg-navy hover:text-white hover:shadow-md"
+                className="inline-flex min-h-11 items-center gap-2.5 rounded-full bg-sand px-5 py-3 text-sm font-medium text-charcoal shadow-sm transition-all duration-300 hover:scale-105 hover:bg-navy hover:text-white hover:shadow-md"
               >
                 <BlockIcon name={item.icon} className="h-4 w-4" />
                 {item.label}

@@ -91,7 +91,7 @@ export default function AdminOrdersIndex({ loaderData }: Route.ComponentProps) {
           </Select>
           <button
             type="submit"
-            className="rounded-full bg-navy px-5 py-2 text-sm text-white hover:bg-navy/90"
+            className="min-h-11 rounded-full bg-navy px-5 py-2 text-sm text-white hover:bg-navy/90"
           >
             Filter
           </button>
@@ -110,9 +110,9 @@ export default function AdminOrdersIndex({ loaderData }: Route.ComponentProps) {
               <th className="px-4 py-3 text-left font-medium">Order</th>
               <th className="px-4 py-3 text-left font-medium">Customer</th>
               <th className="px-4 py-3 text-left font-medium">Status</th>
-              <th className="px-4 py-3 text-left font-medium">Items</th>
+              <th className="hidden px-4 py-3 text-left font-medium md:table-cell">Items</th>
               <th className="px-4 py-3 text-left font-medium">Total</th>
-              <th className="px-4 py-3 text-left font-medium">Date</th>
+              <th className="hidden px-4 py-3 text-left font-medium md:table-cell">Date</th>
             </tr>
           </thead>
           <tbody>
@@ -133,13 +133,13 @@ export default function AdminOrdersIndex({ loaderData }: Route.ComponentProps) {
                       {order.orderNumber}
                     </Link>
                   </td>
-                  <td className="px-4 py-3">{order.email}</td>
+                  <td className="max-w-[140px] truncate px-4 py-3">{order.email}</td>
                   <td className="px-4 py-3">
                     <Badge variant={statusVariant[order.status]}>{order.status}</Badge>
                   </td>
-                  <td className="px-4 py-3">{order.itemCount}</td>
+                  <td className="hidden px-4 py-3 md:table-cell">{order.itemCount}</td>
                   <td className="px-4 py-3">{formatCurrency(order.total)}</td>
-                  <td className="px-4 py-3 text-charcoal/60">
+                  <td className="hidden px-4 py-3 text-charcoal/60 md:table-cell">
                     {new Date(order.createdAt).toLocaleDateString()}
                   </td>
                 </tr>

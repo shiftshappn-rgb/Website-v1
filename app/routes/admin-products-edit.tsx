@@ -385,7 +385,7 @@ export default function AdminProductsEdit({ loaderData, actionData }: Route.Comp
     product.status === "active" ? "success" : product.status === "archived" ? "default" : "warning";
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 pb-8">
+    <div className="mx-auto max-w-5xl space-y-6 pb-24">
       <div className="space-y-3">
         <nav aria-label="Breadcrumb">
           <ol className="flex items-center gap-2 text-sm text-charcoal/60">
@@ -449,7 +449,7 @@ export default function AdminProductsEdit({ loaderData, actionData }: Route.Comp
               </p>
             </div>
           </div>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-3">
             <Select label="Status" name="status" defaultValue={product.status}>
               <option value="draft">Draft</option>
               <option value="active">Active</option>
@@ -590,7 +590,7 @@ export default function AdminProductsEdit({ loaderData, actionData }: Route.Comp
         <AddVariantForm catalogColors={catalogColors} />
       </Card>
 
-      <div className="sticky bottom-0 z-20 -mx-4 flex flex-wrap items-center justify-end gap-3 border-t border-charcoal/10 bg-sand/95 px-4 py-3 backdrop-blur lg:-mx-8 lg:px-8">
+      <div className="sticky bottom-0 z-20 -mx-4 flex flex-wrap items-center justify-end gap-3 border-t border-charcoal/10 bg-sand/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur lg:-mx-8 lg:px-8">
         <Link to="/admin/products" className="text-sm text-charcoal/60 hover:text-navy">
           Back to products
         </Link>
@@ -891,7 +891,7 @@ function ColorHexInput({
                   setHex(color.hex);
                 }}
                 className={cn(
-                  "size-6 rounded-full border transition-transform hover:scale-110",
+                  "size-11 rounded-full border transition-transform hover:scale-110",
                   selected ? "border-navy ring-2 ring-navy/30" : "border-charcoal/15"
                 )}
                 style={{ backgroundColor: color.hex }}

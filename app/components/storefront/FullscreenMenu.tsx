@@ -27,7 +27,7 @@ function Ribbon() {
     "M 180 760 C 340 790, 520 700, 640 600 C 790 480, 920 360, 880 230 C 840 110, 680 90, 640 220 C 600 350, 790 410, 960 500 C 1080 560, 1160 640, 1180 720";
 
   return (
-    <div className="menu-ribbon pointer-events-none absolute inset-y-8 right-6 left-[18%] sm:inset-y-10 sm:right-10 lg:left-[36%] lg:right-14">
+    <div className="menu-ribbon pointer-events-none absolute inset-y-8 right-6 left-[28%] hidden sm:block sm:inset-y-10 sm:right-10 sm:left-[22%] lg:left-[36%] lg:right-14">
       <svg
         className="h-full w-full"
         viewBox="0 0 1200 800"
@@ -115,7 +115,7 @@ export function FullscreenMenu({ open, onClose }: FullscreenMenuProps) {
 
   return (
     <div
-      className="animate-menu-in fixed inset-0 z-100 overflow-hidden bg-charcoal text-gold"
+      className="animate-menu-in fixed inset-0 z-[100] overflow-hidden bg-charcoal text-gold"
       role="dialog"
       aria-modal="true"
       aria-label="Site menu"
@@ -126,7 +126,7 @@ export function FullscreenMenu({ open, onClose }: FullscreenMenuProps) {
       <button
         type="button"
         onClick={onClose}
-        className="absolute top-8 right-8 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-gold text-charcoal shadow-[0_12px_28px_rgba(17,26,34,0.45)] transition-transform hover:scale-105 sm:top-10 sm:right-12 lg:top-12 lg:right-16"
+        className="absolute top-[max(2rem,env(safe-area-inset-top))] right-[max(2rem,env(safe-area-inset-right))] z-20 flex h-12 w-12 items-center justify-center rounded-full bg-gold text-charcoal shadow-[0_12px_28px_rgba(17,26,34,0.45)] transition-transform hover:scale-105 sm:top-10 sm:right-12 lg:top-12 lg:right-16"
         aria-label="Close menu"
       >
         <X size={20} />

@@ -27,7 +27,7 @@ export function CartDrawer() {
   return (
     <div
       className={cn(
-        "fixed inset-0 z-50",
+        "fixed inset-0 z-[60]",
         isOpen ? "pointer-events-auto" : "pointer-events-none"
       )}
       aria-hidden={!isOpen}
@@ -52,7 +52,7 @@ export function CartDrawer() {
           <h2 className="text-lg font-serif text-navy">Your cart</h2>
           <button
             onClick={closeCart}
-            className="p-2 text-charcoal/60 hover:text-charcoal"
+            className="flex min-h-11 min-w-11 items-center justify-center p-2.5 text-charcoal/60 hover:text-charcoal"
             aria-label="Close cart"
           >
             <X size={20} />
@@ -86,29 +86,29 @@ export function CartDrawer() {
                   <p className="text-sm font-medium text-navy mt-1">
                     {formatCurrency(item.price)}
                   </p>
-                  <div className="flex items-center gap-2 mt-2">
+                  <div className="mt-2 flex flex-wrap items-center gap-2 gap-y-2">
                     <button
                       onClick={() =>
                         updateQuantity(item.variantId, item.quantity - 1)
                       }
-                      className="p-1 border border-charcoal/20 rounded"
+                      className="flex min-h-10 min-w-10 items-center justify-center rounded border border-charcoal/20 p-2"
                       aria-label="Decrease quantity"
                     >
                       <Minus size={14} />
                     </button>
-                    <span className="text-sm w-8 text-center">{item.quantity}</span>
+                    <span className="w-8 text-center text-sm">{item.quantity}</span>
                     <button
                       onClick={() =>
                         updateQuantity(item.variantId, item.quantity + 1)
                       }
-                      className="p-1 border border-charcoal/20 rounded"
+                      className="flex min-h-10 min-w-10 items-center justify-center rounded border border-charcoal/20 p-2"
                       aria-label="Increase quantity"
                     >
                       <Plus size={14} />
                     </button>
                     <button
                       onClick={() => removeItem(item.variantId)}
-                      className="ml-auto text-xs text-charcoal/50 hover:text-terracotta"
+                      className="ml-auto inline-flex min-h-10 items-center px-2 text-xs text-charcoal/50 hover:text-terracotta"
                     >
                       Remove
                     </button>

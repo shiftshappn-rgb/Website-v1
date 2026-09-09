@@ -90,7 +90,7 @@ export default function AdminProductsIndex({ loaderData }: Route.ComponentProps)
       </div>
 
       <Card className="p-4">
-        <form method="get" className="flex gap-2">
+        <form method="get" className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <Input
             name="q"
             placeholder="Search products..."
@@ -99,12 +99,12 @@ export default function AdminProductsIndex({ loaderData }: Route.ComponentProps)
           />
           <button
             type="submit"
-            className="rounded-full bg-navy px-5 py-2 text-sm text-white hover:bg-navy/90"
+            className="min-h-11 rounded-full bg-navy px-5 py-2 text-sm text-white hover:bg-navy/90"
           >
             Search
           </button>
           {searchParams.get("q") && (
-            <Link to="/admin/products" className="self-center text-sm text-charcoal/60 hover:text-navy">
+            <Link to="/admin/products" className="inline-flex min-h-11 items-center text-sm text-charcoal/60 hover:text-navy">
               Clear
             </Link>
           )}
@@ -118,8 +118,8 @@ export default function AdminProductsIndex({ loaderData }: Route.ComponentProps)
               <th className="px-4 py-3 text-left font-medium text-charcoal">Name</th>
               <th className="px-4 py-3 text-left font-medium text-charcoal">Status</th>
               <th className="px-4 py-3 text-left font-medium text-charcoal">Price</th>
-              <th className="px-4 py-3 text-left font-medium text-charcoal">Category</th>
-              <th className="px-4 py-3 text-left font-medium text-charcoal">Variants</th>
+              <th className="hidden px-4 py-3 text-left font-medium text-charcoal md:table-cell">Category</th>
+              <th className="hidden px-4 py-3 text-left font-medium text-charcoal md:table-cell">Variants</th>
               <th className="px-4 py-3 text-right font-medium text-charcoal">Actions</th>
             </tr>
           </thead>
@@ -152,7 +152,7 @@ export default function AdminProductsIndex({ loaderData }: Route.ComponentProps)
                       )}
                       <div>
                         <div className="font-medium text-navy">{product.name}</div>
-                        <div className="text-xs text-charcoal/50">{product.slug}</div>
+                        <div className="max-w-[140px] truncate text-xs text-charcoal/50">{product.slug}</div>
                       </div>
                     </div>
                   </td>
@@ -160,12 +160,12 @@ export default function AdminProductsIndex({ loaderData }: Route.ComponentProps)
                     <Badge variant={statusVariant[product.status]}>{product.status}</Badge>
                   </td>
                   <td className="px-4 py-3">{formatCurrency(product.basePrice)}</td>
-                  <td className="px-4 py-3">{product.categoryName ?? "—"}</td>
-                  <td className="px-4 py-3">{product.variantCount}</td>
+                  <td className="hidden px-4 py-3 md:table-cell">{product.categoryName ?? "—"}</td>
+                  <td className="hidden px-4 py-3 md:table-cell">{product.variantCount}</td>
                   <td className="px-4 py-3 text-right">
                     <Link
                       to={`/admin/products/${product.id}`}
-                      className="text-navy hover:text-terracotta"
+                      className="inline-flex min-h-11 items-center text-navy hover:text-terracotta"
                     >
                       Edit
                     </Link>

@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router";
-import { ShoppingBag, Search, User, Menu, X } from "lucide-react";
+import { ShoppingBag, Search, User, Menu } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useCart } from "~/lib/cart";
 import { CartDrawer } from "~/components/storefront/CartDrawer";
@@ -14,7 +14,7 @@ const navLinks = [
 
 export function AnnouncementBar() {
   return (
-    <div className="bg-navy text-white text-center text-xs py-2 px-4 tracking-wide">
+    <div className="bg-navy px-2 py-2 text-center text-xs leading-snug tracking-wide text-white sm:whitespace-nowrap sm:px-4">
       free shipping over $100 CAD — free 14-day returns
     </div>
   );
@@ -54,7 +54,7 @@ export function Navbar() {
           "z-50 transition-all duration-500",
           isHome
             ? overlay
-              ? "fixed top-6 left-6 right-6 sm:top-8 sm:left-10 sm:right-10 lg:top-10 lg:left-14 lg:right-14"
+              ? "fixed top-[max(1rem,env(safe-area-inset-top))] left-3 right-3 sm:top-8 sm:left-10 sm:right-10 lg:top-10 lg:left-14 lg:right-14"
               : "fixed top-0 left-0 right-0"
             : "sticky top-0",
           overlay
@@ -68,12 +68,23 @@ export function Navbar() {
         <nav
           className={cn(
             overlay
-              ? "px-6 sm:px-8 lg:px-10"
+              ? "px-3 sm:px-8 lg:px-10"
               : "mx-auto max-w-7xl px-4 sm:px-6 lg:px-8"
           )}
         >
-          <div className="flex items-center justify-between h-16 lg:h-18">
-            <div className="flex items-center gap-8">
+          <div className="grid h-14 grid-cols-[1fr_auto_1fr] items-center lg:flex lg:h-18 lg:justify-between">
+            <div className="flex items-center justify-start gap-4">
+              <button
+                className={cn(
+                  "flex h-10 w-10 items-center justify-center rounded-full transition-colors sm:h-11 sm:w-11",
+                  overlay ? "bg-gold text-charcoal" : "bg-navy text-white"
+                )}
+                onClick={() => setMobileOpen(true)}
+                aria-expanded={mobileOpen}
+                aria-label="Open menu"
+              >
+                <Menu size={18} />
+              </button>
               <div className="hidden lg:flex items-center gap-6">
                 {navLinks.map((link) => (
                   <Link
@@ -100,26 +111,26 @@ export function Navbar() {
               to="/"
               prefetch="intent"
               aria-label="shiftshappn home"
-              className="absolute left-1/2 -translate-x-1/2"
+              className="justify-self-center lg:absolute lg:left-1/2 lg:-translate-x-1/2"
             >
-              <span className="relative flex h-12 w-47 items-center justify-center">
+              <span className="relative flex h-9 w-10 items-center justify-center sm:h-12 sm:w-36 lg:w-47">
                 <img
                   src="/images/logo.png"
                   alt=""
                   width={150}
                   height={176}
                   className={cn(
-                    "absolute h-11 w-auto origin-center transition-all duration-300 ease-out motion-reduce:transition-none",
+                    "absolute h-8 w-auto origin-center transition-all duration-300 ease-out motion-reduce:transition-none sm:h-11",
                     overlay && "drop-shadow-[0_6px_16px_rgba(0,0,0,0.35)]",
                     scrolled
-                      ? "pointer-events-none scale-90 opacity-0"
+                      ? "scale-100 opacity-100 sm:pointer-events-none sm:scale-90 sm:opacity-0"
                       : "scale-100 opacity-100"
                   )}
                 />
                 <span
                   aria-hidden
                   className={cn(
-                    "font-sans text-xl font-extrabold uppercase tracking-tight transition-all duration-300 ease-out motion-reduce:transition-none",
+                    "hidden font-sans text-xl font-extrabold uppercase tracking-tight transition-all duration-300 ease-out motion-reduce:transition-none sm:inline",
                     overlay ? "text-white" : "text-navy",
                     scrolled
                       ? "translate-y-0 opacity-100"
@@ -131,12 +142,12 @@ export function Navbar() {
               </span>
             </Link>
 
-            <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center justify-end gap-0.5 sm:gap-3">
               <Link
                 to="/shop"
                 prefetch="intent"
                 className={cn(
-                  "p-2 transition-colors",
+                  "hidden min-h-11 min-w-11 items-center justify-center p-2.5 transition-colors sm:flex",
                   overlay ? "text-white hover:text-white/80" : "text-charcoal hover:text-navy"
                 )}
                 aria-label="Browse shop"
@@ -147,7 +158,7 @@ export function Navbar() {
                 to="/account"
                 prefetch="intent"
                 className={cn(
-                  "p-2 transition-colors",
+                  "flex h-10 w-10 items-center justify-center transition-colors sm:min-h-11 sm:min-w-11 sm:w-auto sm:p-2.5",
                   overlay ? "text-white hover:text-white/80" : "text-charcoal hover:text-navy"
                 )}
                 aria-label="Account"
@@ -157,14 +168,14 @@ export function Navbar() {
               <button
                 onClick={openCart}
                 className={cn(
-                  "p-2 transition-colors relative",
+                  "relative flex h-10 w-10 items-center justify-center transition-colors sm:min-h-11 sm:min-w-11 sm:w-auto sm:p-2.5",
                   overlay ? "text-white hover:text-white/80" : "text-charcoal hover:text-navy"
                 )}
                 aria-label={`Cart, ${itemCount} items`}
               >
                 <ShoppingBag size={20} />
                 {itemCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 bg-terracotta text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                  <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-terracotta px-1 text-[10px] font-bold text-white">
                     {itemCount}
                   </span>
                 )}
@@ -176,17 +187,6 @@ export function Navbar() {
               >
                 Shop now
               </Link>
-              <button
-                className={cn(
-                  "flex h-10 w-10 items-center justify-center rounded-full transition-colors",
-                  overlay ? "bg-gold text-charcoal" : "bg-navy text-white lg:bg-gold lg:text-charcoal"
-                )}
-                onClick={() => setMobileOpen(true)}
-                aria-expanded={mobileOpen}
-                aria-label="Open menu"
-              >
-                <Menu size={18} />
-              </button>
             </div>
           </div>
 

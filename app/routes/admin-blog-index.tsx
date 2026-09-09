@@ -51,8 +51,8 @@ export default function AdminBlogIndex({ loaderData }: Route.ComponentProps) {
             <tr>
               <th className="px-4 py-3 text-left font-medium">Title</th>
               <th className="px-4 py-3 text-left font-medium">Status</th>
-              <th className="px-4 py-3 text-left font-medium">Author</th>
-              <th className="px-4 py-3 text-left font-medium">Published</th>
+              <th className="hidden px-4 py-3 text-left font-medium md:table-cell">Author</th>
+              <th className="hidden px-4 py-3 text-left font-medium md:table-cell">Published</th>
               <th className="px-4 py-3 text-right font-medium">Actions</th>
             </tr>
           </thead>
@@ -68,15 +68,15 @@ export default function AdminBlogIndex({ loaderData }: Route.ComponentProps) {
                 <tr key={post.id} className="border-b border-charcoal/5 hover:bg-sand/30">
                   <td className="px-4 py-3">
                     <div className="font-medium text-navy">{post.title}</div>
-                    <div className="text-xs text-charcoal/50">{post.slug}</div>
+                    <div className="max-w-[140px] truncate text-xs text-charcoal/50">{post.slug}</div>
                   </td>
                   <td className="px-4 py-3">
                     <Badge variant={post.status === "published" ? "success" : "warning"}>
                       {post.status}
                     </Badge>
                   </td>
-                  <td className="px-4 py-3">{post.author ?? "—"}</td>
-                  <td className="px-4 py-3 text-charcoal/60">
+                  <td className="hidden px-4 py-3 md:table-cell">{post.author ?? "—"}</td>
+                  <td className="hidden px-4 py-3 text-charcoal/60 md:table-cell">
                     {post.publishedAt
                       ? new Date(post.publishedAt).toLocaleDateString()
                       : "—"}
@@ -84,7 +84,7 @@ export default function AdminBlogIndex({ loaderData }: Route.ComponentProps) {
                   <td className="px-4 py-3 text-right">
                     <Link
                       to={`/admin/blog/${post.id}`}
-                      className="text-navy hover:text-terracotta"
+                      className="inline-flex min-h-11 items-center text-navy hover:text-terracotta"
                     >
                       Edit
                     </Link>

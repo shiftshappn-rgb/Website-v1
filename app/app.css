@@ -253,8 +253,8 @@ h1, h2 {
 .hero-model {
   position: absolute;
   inset: 0;
-  transform: rotateX(6deg) translateZ(40px) scale(1.28);
-  transform-origin: 50% 100%;
+  transform: rotateX(6deg) translateZ(40px) scale(1.05);
+  transform-origin: 100% 100%;
   transform-style: preserve-3d;
   transition: opacity 0.5s ease;
 }
@@ -305,6 +305,25 @@ h1, h2 {
     transparent 72%
   );
   filter: blur(10px);
+}
+
+@media (max-width: 639px) {
+  .hero-model {
+    transform: rotateX(3deg) scale(1.8) translateX(-4%);
+    transform-origin: 50% 100%;
+  }
+
+  .hero-model-depth {
+    transform: translate3d(4px, 8px, 0) scale(1);
+  }
+
+  .hero-model-floor {
+    width: min(85%, 20rem);
+  }
+
+  .hero-wordmark {
+    line-height: 0.82;
+  }
 }
 
 .hero-spark {
@@ -412,5 +431,15 @@ h1, h2 {
 
   .hero-model-depth {
     transform: translate(14px, 18px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) and (max-width: 639px) {
+  .hero-model {
+    transform: scale(1.8) translateX(-4%);
+  }
+
+  .hero-model-depth {
+    transform: translate(4px, 8px);
   }
 }
