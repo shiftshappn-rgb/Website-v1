@@ -1,0 +1,41 @@
+# dependencies
+node_modules/
+
+# build output
+build/
+dist/
+
+# environment variables
+.env
+.env.*
+!.env.example
+
+# prisma
+prisma/migrations/**/migration_lock.toml
+
+# vite
+*.local
+
+# editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# typescript
+*.tsbuildinfo
+
+# react-router typegen
+.react-router/

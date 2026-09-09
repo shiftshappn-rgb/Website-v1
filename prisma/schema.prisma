@@ -1,0 +1,357 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+enum ProductStatus {
+  draft
+  active
+  archived
+}
+
+enum OrderStatus {
+  pending
+  paid
+  fulfilled
+  refunded
+  cancelled
+}
+
+enum DiscountType {
+  percent
+  fixed
+  free_shipping
+}
+
+enum ReviewStatus {
+  pending
+  approved
+  rejected
+}
+
+enum BlogStatus {
+  draft
+  published
+}
+
+enum AdminRole {
+  superadmin
+  editor
+  support
+}
+
+enum HomepageBlockType {
+  hero
+  marquee
+  quickShopRow
+  categoryDuo
+  productGrid
+  bundleBanner
+  sizeFinderStrip
+  fabricCallout
+  brandStory
+  reviewHighlight
+  valuePropsRow
+}
+
+enum BundleDiscountType {
+  percent
+  fixed
+}
+
+model Product {
+  id               String        @id @default(cuid())
+  slug             String        @unique
+  name             String
+  description      String        @db.Text
+  shortDescription String?
+  status           ProductStatus @default(draft)
+  basePrice        Decimal       @db.Decimal(10, 2)
+  compareAtPrice   Decimal?      @db.Decimal(10, 2)
+  categoryId       String?
+  fabricTypeId     String?
+  seoTitle         String?
+  seoDescription   String?
+  seoImage         String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  category   Category?    @relation(fields: [categoryId], references: [id])
+  fabricType FabricType?  @relation(fields: [fabricTypeId], references: [id])
+  variants   ProductVariant[]
+  reviews    Review[]
+  professions ProductProfession[]
+  collections ProductCollection[]
+  bundleItems BundleProduct[]
+}
+
+model ProductVariant {
+  id            String   @id @default(cuid())
+  productId     String
+  colorName     String
+  colorHex      String
+  size          String
+  sku           String   @unique
+  priceOverride Decimal? @db.Decimal(10, 2)
+  inventoryQty  Int      @default(0)
+  images        Json     @default("[]")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+}
+
+model Category {
+  id               String   @id @default(cuid())
+  name             String
+  slug             String   @unique
+  parentCategoryId String?
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  parent   Category?  @relation("CategoryTree", fields: [parentCategoryId], references: [id])
+  children Category[] @relation("CategoryTree")
+  products Product[]
+}
+
+model Profession {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  products ProductProfession[]
+}
+
+model ProductProfession {
+  productId    String
+  professionId String
+
+  product    Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  profession Profession @relation(fields: [professionId], references: [id], onDelete: Cascade)
+
+  @@id([productId, professionId])
+}
+
+model FabricType {
+  id           String   @id @default(cuid())
+  name         String
+  slug         String   @unique
+  description  String?
+  iconOrImage  String?
+  createdAt    DateTime @default(now())
+
+  products Product[]
+}
+
+model CatalogColor {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  hex       String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Collection {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  heroImage   String?
+  seoTitle    String?
+  seoDescription String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  products ProductCollection[]
+}
+
+model ProductCollection {
+  productId    String
+  collectionId String
+  sortOrder    Int      @default(0)
+
+  product    Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@id([productId, collectionId])
+}
+
+model Bundle {
+  id            String             @id @default(cuid())
+  name          String
+  slug          String             @unique
+  discountType  BundleDiscountType
+  discountValue Decimal            @db.Decimal(10, 2)
+  description   String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  products BundleProduct[]
+}
+
+model BundleProduct {
+  bundleId  String
+  productId String
+  sortOrder Int    @default(0)
+
+  bundle  Bundle  @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([bundleId, productId])
+}
+
+model Customer {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  passwordHash   String?
+  name           String?
+  marketingOptIn Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  orders    Order[]
+  addresses Address[]
+}
+
+model Address {
+  id         String  @id @default(cuid())
+  customerId String
+  label      String?
+  line1      String
+  line2      String?
+  city       String
+  province   String
+  postalCode String
+  country    String  @default("CA")
+  isDefault  Boolean @default(false)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+model Order {
+  id                    String      @id @default(cuid())
+  orderNumber           String      @unique
+  customerId            String?
+  email                 String
+  subtotal              Decimal     @db.Decimal(10, 2)
+  shipping              Decimal     @db.Decimal(10, 2) @default(0)
+  tax                   Decimal     @db.Decimal(10, 2) @default(0)
+  total                 Decimal     @db.Decimal(10, 2)
+  currency              String      @default("CAD")
+  stripePaymentIntentId String?
+  stripeSessionId       String?
+  status                OrderStatus @default(pending)
+  shippingAddress       Json
+  billingAddress        Json?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  customer Customer?   @relation(fields: [customerId], references: [id])
+  items    OrderItem[]
+}
+
+model OrderItem {
+  id               String  @id @default(cuid())
+  orderId          String
+  productVariantId String
+  quantity         Int
+  priceAtPurchase  Decimal @db.Decimal(10, 2)
+  productName      String
+  variantLabel     String
+
+  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productVariant ProductVariant @relation(fields: [productVariantId], references: [id])
+}
+
+model Review {
+  id               String       @id @default(cuid())
+  productId        String
+  customerName     String
+  rating           Int
+  title            String?
+  body             String       @db.Text
+  verifiedPurchase Boolean      @default(false)
+  status           ReviewStatus @default(pending)
+  photos           Json         @default("[]")
+  createdAt        DateTime     @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model DiscountCode {
+  id         String       @id @default(cuid())
+  code       String       @unique
+  type       DiscountType
+  value      Decimal      @db.Decimal(10, 2)
+  minSpend   Decimal?     @db.Decimal(10, 2)
+  expiresAt  DateTime?
+  usageLimit Int?
+  usedCount  Int          @default(0)
+  isActive   Boolean      @default(true)
+  createdAt  DateTime     @default(now())
+}
+
+model BlogPost {
+  id             String     @id @default(cuid())
+  slug           String     @unique
+  title          String
+  excerpt        String?
+  bodyRichText   String     @db.Text
+  coverImage     String?
+  author         String?
+  status         BlogStatus @default(draft)
+  publishedAt    DateTime?
+  seoTitle       String?
+  seoDescription String?
+  tags           String[]   @default([])
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+}
+
+model HomepageBlock {
+  id       String            @id @default(cuid())
+  type     HomepageBlockType
+  order    Int
+  content  Json
+  isActive Boolean           @default(true)
+}
+
+model AdminUser {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  role         AdminRole @default(editor)
+  createdAt    DateTime  @default(now())
+}
+
+model MediaAsset {
+  id                 String   @id @default(cuid())
+  cloudinaryPublicId String   @unique
+  altText            String
+  tags               String[] @default([])
+  uploadedAt         DateTime @default(now())
+}
+
+model PolicyPage {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  title     String
+  content   String   @db.Text
+  updatedAt DateTime @updatedAt
+}
+
+model SiteSetting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value Json
+}
