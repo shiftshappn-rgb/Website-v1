@@ -10,7 +10,21 @@ export const CATALOG_COLORS = {
   "Dusty Rose": "#B07A7A",
 } as const;
 
-export const CATALOG_SIZES = ["XS", "S", "M", "L", "XL", "2XL", "3XL"] as const;
+export const CATALOG_SIZES = [
+  "XXS",
+  "XS",
+  "S",
+  "M",
+  "L",
+  "XL",
+  "XXL",
+  "2XL",
+  "3XL",
+  "4XL",
+  "5XL",
+] as const;
+
+export const CATALOG_LENGTHS = ["Jogger", "Straight", "Tall"] as const;
 
 export type CatalogColorName = keyof typeof CATALOG_COLORS;
 

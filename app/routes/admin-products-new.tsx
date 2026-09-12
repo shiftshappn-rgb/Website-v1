@@ -48,6 +48,10 @@ export async function action({ request }: Route.ActionArgs) {
   const seoTitle = String(formData.get("seoTitle") ?? "").trim() || null;
   const seoDescription = String(formData.get("seoDescription") ?? "").trim() || null;
   const seoImage = String(formData.get("seoImage") ?? "").trim() || null;
+  const fitSummary = String(formData.get("fitSummary") ?? "").trim() || null;
+  const careInstructions = String(formData.get("careInstructions") ?? "").trim() || null;
+  const lengthGuide = String(formData.get("lengthGuide") ?? "").trim() || null;
+  const offerLengths = formData.get("offerLengths") === "on";
 
   if (!name || !description) {
     return { error: "Name and description are required." };
@@ -76,6 +80,10 @@ export async function action({ request }: Route.ActionArgs) {
       seoTitle,
       seoDescription,
       seoImage,
+      fitSummary,
+      careInstructions,
+      lengthGuide,
+      offerLengths,
     },
   });
 
@@ -105,6 +113,17 @@ export default function AdminProductsNew({ loaderData, actionData }: Route.Compo
 
         <Textarea label="Description" name="description" required />
         <Textarea label="Short Description" name="shortDescription" rows={3} className="min-h-[80px]" />
+        <Textarea label="Fit" name="fitSummary" rows={3} className="min-h-[80px]" />
+        <Textarea label="Care instructions" name="careInstructions" rows={3} className="min-h-[80px]" />
+        <Input
+          label="Length guide"
+          name="lengthGuide"
+          placeholder='Jogger 29" · Straight 31" · Tall 33"'
+        />
+        <label className="flex min-h-11 items-center gap-3 text-sm text-charcoal">
+          <input type="checkbox" name="offerLengths" className="size-4 rounded border-charcoal/30" />
+          Offer Jogger / Straight / Tall on the product page
+        </label>
 
         <div className="grid gap-4 sm:grid-cols-3">
           <Select label="Status" name="status" defaultValue="draft">

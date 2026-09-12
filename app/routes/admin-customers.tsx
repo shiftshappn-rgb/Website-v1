@@ -1,8 +1,25 @@
+import { useMemo } from "react";
+import type { ColumnDef, FilterFn } from "@tanstack/react-table";
 import type { Route } from "./+types/admin-customers";
-import { Card } from "~/components/ui/Badge";
+import { AdminDataTable } from "~/components/admin/AdminDataTable";
 import { DatabaseUnavailable } from "~/components/admin/DatabaseUnavailable";
+import { Badge } from "~/components/ui/shadcn-badge";
 import { db, isDatabaseAvailable } from "~/db.server";
 import { requireAdmin } from "~/lib/session.server";
+
+type CustomerRow = {
+  id: string;
+  email: string;
+  name: string | null;
+  marketingOptIn: boolean;
+  orderCount: number;
+  createdAt: string;
+};
+
+const searchFilterFn: FilterFn<CustomerRow> = (row, _columnId, filterValue) => {
+  const haystack = `${row.original.name ?? ""} ${row.original.email}`.toLowerCase();
+  return haystack.includes(String(filterValue ?? "").toLowerCase());
+};
 
 export async function loader({ request }: Route.LoaderArgs) {
   if (!isDatabaseAvailable()) {
@@ -36,52 +53,67 @@ export default function AdminCustomers({ loaderData }: Route.ComponentProps) {
 
   const { customers } = loaderData;
 
+  const columns = useMemo<ColumnDef<CustomerRow>[]>(
+    () => [
+      {
+        header: "Name",
+        accessorKey: "name",
+        cell: ({ row }) => (
+          <span className="font-medium">{row.original.name ?? "—"}</span>
+        ),
+        filterFn: searchFilterFn,
+        enableHiding: false,
+        size: 180,
+      },
+      {
+        header: "Email",
+        accessorKey: "email",
+        cell: ({ row }) => (
+          <span className="max-w-56 truncate block">{row.original.email}</span>
+        ),
+        size: 220,
+      },
+      {
+        header: "Orders",
+        accessorKey: "orderCount",
+        size: 90,
+      },
+      {
+        header: "Marketing",
+        accessorKey: "marketingOptIn",
+        cell: ({ row }) => (
+          <Badge variant={row.original.marketingOptIn ? "default" : "secondary"}>
+            {row.original.marketingOptIn ? "Yes" : "No"}
+          </Badge>
+        ),
+        size: 110,
+      },
+      {
+        header: "Joined",
+        accessorKey: "createdAt",
+        cell: ({ row }) => new Date(row.original.createdAt).toLocaleDateString(),
+        size: 120,
+      },
+    ],
+    []
+  );
+
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-serif text-navy">Customers</h1>
-
-      <div className="overflow-x-auto rounded-xl border border-charcoal/10 bg-white">
-        <table className="w-full text-sm">
-          <thead className="border-b border-charcoal/10 bg-sand/50">
-            <tr>
-              <th className="px-4 py-3 text-left font-medium">Name</th>
-              <th className="px-4 py-3 text-left font-medium">Email</th>
-              <th className="px-4 py-3 text-left font-medium">Orders</th>
-              <th className="hidden px-4 py-3 text-left font-medium md:table-cell">Marketing</th>
-              <th className="hidden px-4 py-3 text-left font-medium md:table-cell">Joined</th>
-            </tr>
-          </thead>
-          <tbody>
-            {customers.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-charcoal/60">
-                  No customers yet.
-                </td>
-              </tr>
-            ) : (
-              customers.map((customer) => (
-                <tr key={customer.id} className="border-b border-charcoal/5 hover:bg-sand/30">
-                  <td className="px-4 py-3 font-medium text-navy">
-                    {customer.name ?? "—"}
-                  </td>
-                  <td className="max-w-[140px] truncate px-4 py-3">{customer.email}</td>
-                  <td className="px-4 py-3">{customer.orderCount}</td>
-                  <td className="hidden px-4 py-3 md:table-cell">
-                    {customer.marketingOptIn ? "Yes" : "No"}
-                  </td>
-                  <td className="hidden px-4 py-3 text-charcoal/60 md:table-cell">
-                    {new Date(customer.createdAt).toLocaleDateString()}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="font-serif text-2xl text-navy">Customers</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {customers.length} customer{customers.length !== 1 ? "s" : ""} total
+        </p>
       </div>
-
-      <Card className="text-sm text-charcoal/60">
-        {customers.length} customer{customers.length !== 1 ? "s" : ""} total
-      </Card>
+      <AdminDataTable
+        data={customers}
+        columns={columns}
+        getRowId={(row) => row.id}
+        searchColumnId="name"
+        searchPlaceholder="Filter by name or email..."
+        emptyMessage="No customers yet."
+      />
     </div>
   );
 }

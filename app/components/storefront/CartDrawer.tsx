@@ -128,11 +128,23 @@ export function CartDrawer() {
             <p className="text-xs text-charcoal/50">
               Shipping and taxes calculated at checkout
             </p>
-            <Form method="post" action="/api/checkout">
+            <Form method="post" action="/api/checkout" className="space-y-3">
               <input
                 type="hidden"
                 name="cart"
                 value={JSON.stringify(items)}
+              />
+              <input
+                name="discountCode"
+                placeholder="Discount code"
+                className="w-full rounded-lg border border-charcoal/20 px-3 py-2.5 text-sm"
+                autoComplete="off"
+              />
+              <input
+                name="giftCardCode"
+                placeholder="Gift card"
+                className="w-full rounded-lg border border-charcoal/20 px-3 py-2.5 text-sm"
+                autoComplete="off"
               />
               <Button type="submit" variant="terracotta" className="w-full">
                 Proceed to checkout

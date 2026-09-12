@@ -70,6 +70,15 @@ export default function Account({ loaderData }: Route.ComponentProps) {
             {customer.addressCount} saved address{customer.addressCount !== 1 ? "es" : ""}
           </p>
         </Link>
+        <Link
+          to="/account/rewards"
+          className="rounded-xl border border-charcoal/10 bg-white p-6 transition-colors hover:border-navy/30 sm:col-span-2"
+        >
+          <h2 className="font-serif text-lg text-navy">Rewards</h2>
+          <p className="mt-1 text-sm text-charcoal/60">
+            Points, gift cards, and monthly offer codes
+          </p>
+        </Link>
       </div>
 
       {recentOrders.length > 0 && (

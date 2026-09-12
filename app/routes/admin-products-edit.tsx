@@ -108,6 +108,10 @@ export async function loader({ request, params }: Route.LoaderArgs) {
       seoTitle: product.seoTitle,
       seoDescription: product.seoDescription,
       seoImage: product.seoImage,
+      fitSummary: product.fitSummary,
+      careInstructions: product.careInstructions,
+      lengthGuide: product.lengthGuide,
+      offerLengths: product.offerLengths,
       updatedAt: product.updatedAt.toISOString(),
       variants: product.variants.map((variant) => ({
         id: variant.id,
@@ -329,6 +333,10 @@ export async function action({ request, params }: Route.ActionArgs): Promise<Act
   const seoTitle = String(formData.get("seoTitle") ?? "").trim() || null;
   const seoDescription = String(formData.get("seoDescription") ?? "").trim() || null;
   const seoImage = String(formData.get("seoImage") ?? "").trim() || null;
+  const fitSummary = String(formData.get("fitSummary") ?? "").trim() || null;
+  const careInstructions = String(formData.get("careInstructions") ?? "").trim() || null;
+  const lengthGuide = String(formData.get("lengthGuide") ?? "").trim() || null;
+  const offerLengths = formData.get("offerLengths") === "on";
 
   if (!name || !description) {
     return { error: "Name and description are required." };
@@ -364,6 +372,10 @@ export async function action({ request, params }: Route.ActionArgs): Promise<Act
       seoTitle,
       seoDescription,
       seoImage,
+      fitSummary,
+      careInstructions,
+      lengthGuide,
+      offerLengths,
     },
   });
 
@@ -512,6 +524,45 @@ export default function AdminProductsEdit({ loaderData, actionData }: Route.Comp
             rows={3}
             className="min-h-[80px]"
           />
+        </Card>
+
+        <Card className="space-y-4">
+          <div>
+            <h2 className="font-serif text-lg text-navy">Fit, length & care</h2>
+            <p className="mt-1 text-sm text-charcoal/60">
+              Shown on the product page as Details, Fit, and Fabric tabs. Enable lengths
+              for pants that offer Jogger, Straight, and Tall.
+            </p>
+          </div>
+          <Textarea
+            label="Fit"
+            name="fitSummary"
+            defaultValue={product.fitSummary ?? ""}
+            rows={3}
+            className="min-h-20"
+          />
+          <Textarea
+            label="Care instructions"
+            name="careInstructions"
+            defaultValue={product.careInstructions ?? ""}
+            rows={3}
+            className="min-h-20"
+          />
+          <Input
+            label="Length guide"
+            name="lengthGuide"
+            defaultValue={product.lengthGuide ?? ""}
+            placeholder='Jogger 29" · Straight 31" · Tall 33"'
+          />
+          <label className="flex min-h-11 items-center gap-3 text-sm text-charcoal">
+            <input
+              type="checkbox"
+              name="offerLengths"
+              defaultChecked={product.offerLengths}
+              className="size-4 rounded border-charcoal/30"
+            />
+            Offer Jogger / Straight / Tall on the product page
+          </label>
         </Card>
 
         <Card>
@@ -821,7 +872,7 @@ function AddVariantForm({
           </Button>
         </div>
         <p className="text-xs text-charcoal/50">
-          Click a saved swatch to fill the name. All sizes uses XS–3XL.
+          Click a saved swatch to fill the name. All sizes uses XXS–5XL.
         </p>
       </fetcher.Form>
     </div>

@@ -9,6 +9,8 @@ const menuLinks = [
   { label: "Women", href: "/shop/women" },
   { label: "Men", href: "/shop/men" },
   { label: "Bundles", href: "/collections/bundles" },
+  { label: "Community", href: "/community" },
+  { label: "Gift cards", href: "/gift-cards" },
   { label: "About", href: "/about" },
   { label: "FAQ", href: "/faq" },
   { label: "Contact", href: "/contact" },

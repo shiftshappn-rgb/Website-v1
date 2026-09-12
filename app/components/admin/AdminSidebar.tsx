@@ -1,21 +1,55 @@
 import { useEffect, useState } from "react";
 import { Form, NavLink } from "react-router";
+import {
+  Award,
+  BadgePercent,
+  Folders,
+  Gift,
+  Image,
+  Layers,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  MessagesSquare,
+  Newspaper,
+  Package,
+  Palette,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelTop,
+  Settings,
+  ShoppingBag,
+  Star,
+  TicketPercent,
+  Users,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { cn } from "~/lib/utils";
 
-const navItems = [
-  { to: "/admin", label: "Dashboard", end: true },
-  { to: "/admin/products", label: "Products" },
-  { to: "/admin/categories", label: "Categories" },
-  { to: "/admin/colors", label: "Colours" },
-  { to: "/admin/collections", label: "Collections" },
-  { to: "/admin/orders", label: "Orders" },
-  { to: "/admin/customers", label: "Customers" },
-  { to: "/admin/blog", label: "Blog" },
-  { to: "/admin/homepage-blocks", label: "Homepage" },
-  { to: "/admin/discounts", label: "Discounts" },
-  { to: "/admin/media", label: "Media" },
-  { to: "/admin/reviews", label: "Reviews" },
-  { to: "/admin/settings", label: "Settings" },
+const navItems: Array<{
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  end?: boolean;
+}> = [
+  { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
+  { to: "/admin/products", label: "Products", icon: Package },
+  { to: "/admin/categories", label: "Categories", icon: Folders },
+  { to: "/admin/colors", label: "Colours", icon: Palette },
+  { to: "/admin/collections", label: "Collections", icon: Layers },
+  { to: "/admin/orders", label: "Orders", icon: ShoppingBag },
+  { to: "/admin/customers", label: "Customers", icon: Users },
+  { to: "/admin/blog", label: "Blog", icon: Newspaper },
+  { to: "/admin/homepage-blocks", label: "Homepage", icon: PanelTop },
+  { to: "/admin/discounts", label: "Discounts", icon: TicketPercent },
+  { to: "/admin/offers", label: "Offers", icon: BadgePercent },
+  { to: "/admin/gift-cards", label: "Gift cards", icon: Gift },
+  { to: "/admin/loyalty", label: "Loyalty", icon: Award },
+  { to: "/admin/community", label: "Community", icon: MessagesSquare },
+  { to: "/admin/media", label: "Media", icon: Image },
+  { to: "/admin/reviews", label: "Reviews", icon: Star },
+  { to: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
 export function AdminSidebar() {
@@ -51,9 +85,9 @@ export function AdminSidebar() {
         )}
         onClick={() => setMobileOpen(!mobileOpen)}
         aria-expanded={mobileOpen}
-        aria-label="Toggle navigation"
+        aria-label={mobileOpen ? "Close navigation" : "Open navigation"}
       >
-        {mobileOpen ? "✕" : "☰"}
+        {mobileOpen ? <X size={18} aria-hidden /> : <Menu size={18} aria-hidden />}
       </button>
 
       {mobileOpen && (
@@ -71,7 +105,12 @@ export function AdminSidebar() {
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-5">
+        <div
+          className={cn(
+            "flex items-center border-b border-white/10 px-4 py-5",
+            collapsed ? "justify-center" : "justify-between"
+          )}
+        >
           {!collapsed && (
             <span className="font-serif text-lg text-sand">ShiftsHappn</span>
           )}
@@ -80,44 +119,58 @@ export function AdminSidebar() {
             className="hidden min-h-11 min-w-11 items-center justify-center rounded p-1 text-white/70 hover:text-white lg:flex"
             onClick={() => setCollapsed(!collapsed)}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            {collapsed ? "→" : "←"}
+            {collapsed ? (
+              <PanelLeftOpen size={18} aria-hidden />
+            ) : (
+              <PanelLeftClose size={18} aria-hidden />
+            )}
           </button>
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-4">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              prefetch="intent"
-              onClick={() => setMobileOpen(false)}
-              className={({ isActive }) =>
-                cn(
-                  "flex min-h-11 items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-navy text-white"
-                    : "text-white/70 hover:bg-white/10 hover:text-white"
-                )
-              }
-            >
-              {!collapsed && item.label}
-              {collapsed && <span className="mx-auto text-xs">{item.label[0]}</span>}
-            </NavLink>
-          ))}
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                prefetch="intent"
+                title={item.label}
+                aria-label={item.label}
+                onClick={() => setMobileOpen(false)}
+                className={({ isActive }) =>
+                  cn(
+                    "flex min-h-11 items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                    collapsed ? "justify-center" : "gap-3",
+                    isActive
+                      ? "bg-navy text-white"
+                      : "text-white/70 hover:bg-white/10 hover:text-white"
+                  )
+                }
+              >
+                <Icon size={18} aria-hidden />
+                {!collapsed && <span>{item.label}</span>}
+              </NavLink>
+            );
+          })}
         </nav>
 
         <div className="border-t border-white/10 p-2">
           <Form method="post" action="/admin/logout">
             <button
               type="submit"
+              title="Logout"
+              aria-label="Logout"
               className={cn(
                 "flex min-h-11 w-full items-center rounded-lg px-3 py-2.5 text-sm font-medium text-terracotta transition-colors hover:bg-white/10",
-                collapsed && "justify-center"
+                collapsed ? "justify-center" : "gap-3"
               )}
             >
-              {collapsed ? "↪" : "Logout"}
+              <LogOut size={18} aria-hidden />
+              {!collapsed && <span>Logout</span>}
             </button>
           </Form>
         </div>
