@@ -143,6 +143,45 @@ async function handleCheckoutCompleted(
     });
   }
 
+  const discountCode = metadata.discountCode?.trim();
+  if (discountCode) {
+    await db.discountCode.updateMany({
+      where: { code: discountCode },
+      data: { usedCount: { increment: 1 } },
+    });
+  }
+
+  const giftCardCode = metadata.giftCardCode?.trim();
+  const giftCardAmount = parseFloat(metadata.giftCardAmount ?? "0");
+  if (giftCardCode && giftCardAmount > 0) {
+    const card = await db.giftCard.findUnique({ where: { code: giftCardCode } });
+    if (card) {
+      await db.giftCard.update({
+        where: { id: card.id },
+        data: { balance: Math.max(0, Number(card.balance) - giftCardAmount) },
+      });
+    }
+  }
+
+  if (email) {
+    const points = Math.max(0, Math.floor(subtotal));
+    const customer = await db.customer.findUnique({ where: { email } });
+    if (customer && points > 0) {
+      await db.customer.update({
+        where: { id: customer.id },
+        data: { loyaltyPoints: { increment: points } },
+      });
+      await db.loyaltyLedger.create({
+        data: {
+          customerId: customer.id,
+          points,
+          reason: `Order ${order.orderNumber}`,
+          orderId: order.id,
+        },
+      });
+    }
+  }
+
   await sendOrderConfirmationEmail({
     to: email,
     orderNumber: order.orderNumber,

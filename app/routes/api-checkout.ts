@@ -2,6 +2,11 @@ import { data, redirect } from "react-router";
 import type { Route } from "./+types/api-checkout";
 import type { CartItem } from "~/lib/cart";
 import { tryDb } from "~/db.server";
+import {
+  computeDiscountAmount,
+  resolveDiscountCode,
+  resolveGiftCard,
+} from "~/lib/commerce.server";
 import { getStripe } from "~/lib/stripe.server";
 import { getVariantPrice } from "~/lib/utils";
 
@@ -14,6 +19,8 @@ export async function action({ request }: Route.ActionArgs) {
 
   const formData = await request.formData();
   const cartJson = formData.get("cart") as string;
+  const discountCodeRaw = String(formData.get("discountCode") ?? "").trim();
+  const giftCardCodeRaw = String(formData.get("giftCardCode") ?? "").trim();
 
   if (!cartJson) {
     return data({ error: "Cart is empty" }, { status: 400 });
@@ -75,11 +82,61 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const subtotal = lineItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const shipping = subtotal >= 100 ? 0 : 9.95;
-  const tax = Math.round((subtotal + shipping) * 0.13 * 100) / 100;
-  const total = subtotal + shipping + tax;
+  const originalShipping = subtotal >= 100 ? 0 : 9.95;
+  let shipping = originalShipping;
+  let discountAmount = 0;
+
+  if (discountCodeRaw) {
+    const resolved = await resolveDiscountCode(db, discountCodeRaw, subtotal);
+    if ("error" in resolved) {
+      return data({ error: resolved.error }, { status: 400 });
+    }
+    if (resolved.discount.type === "free_shipping") {
+      shipping = 0;
+      discountAmount = originalShipping;
+    } else {
+      discountAmount = computeDiscountAmount(
+        resolved.discount.type,
+        Number(resolved.discount.value),
+        subtotal,
+        shipping
+      );
+    }
+  }
+
+  const merchandise = Math.max(0, subtotal - (shipping === 0 && discountAmount === originalShipping ? 0 : Math.min(discountAmount, subtotal)));
+  let giftCardAmount = 0;
+
+  if (giftCardCodeRaw) {
+    const resolved = await resolveGiftCard(db, giftCardCodeRaw);
+    if ("error" in resolved) {
+      return data({ error: resolved.error }, { status: 400 });
+    }
+    giftCardAmount = Math.min(Number(resolved.card.balance), merchandise + shipping);
+  }
+
+  const tax = Math.round((merchandise + shipping - giftCardAmount) * 0.13 * 100) / 100;
+  const total = Math.max(0, merchandise + shipping - giftCardAmount + tax);
+  const stripeOriginal = subtotal + originalShipping;
+  const stripePayable = merchandise + shipping - giftCardAmount;
+  const stripeDiscountCents = Math.round((stripeOriginal - stripePayable) * 100);
 
   const stripe = getStripe();
+  const discounts =
+    stripeDiscountCents > 0
+      ? [
+          {
+            coupon: (
+              await stripe.coupons.create({
+                amount_off: stripeDiscountCents,
+                currency: "cad",
+                duration: "once",
+                name: [discountCodeRaw, giftCardCodeRaw].filter(Boolean).join(" + ") || "Offer",
+              })
+            ).id,
+          },
+        ]
+      : undefined;
 
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
@@ -95,17 +152,19 @@ export async function action({ request }: Route.ActionArgs) {
       },
       quantity: item.quantity,
     })),
-    shipping_options: shipping > 0
-      ? [
-          {
-            shipping_rate_data: {
-              type: "fixed_amount",
-              fixed_amount: { amount: Math.round(shipping * 100), currency: "cad" },
-              display_name: "Standard shipping",
+    shipping_options:
+      originalShipping > 0
+        ? [
+            {
+              shipping_rate_data: {
+                type: "fixed_amount",
+                fixed_amount: { amount: Math.round(originalShipping * 100), currency: "cad" },
+                display_name: "Standard shipping",
+              },
             },
-          },
-        ]
-      : undefined,
+          ]
+        : undefined,
+    discounts,
     automatic_tax: { enabled: false },
     metadata: {
       lineItems: JSON.stringify(
@@ -121,6 +180,9 @@ export async function action({ request }: Route.ActionArgs) {
       shipping: shipping.toFixed(2),
       tax: tax.toFixed(2),
       total: total.toFixed(2),
+      discountCode: discountCodeRaw.toUpperCase(),
+      giftCardCode: giftCardCodeRaw.toUpperCase(),
+      giftCardAmount: giftCardAmount.toFixed(2),
     },
     success_url: `${APP_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${APP_URL}/`,

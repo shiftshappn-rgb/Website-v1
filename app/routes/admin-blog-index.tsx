@@ -1,10 +1,36 @@
+import { useMemo } from "react";
 import { Link } from "react-router";
+import type { ColumnDef, FilterFn } from "@tanstack/react-table";
+import type { BlogStatus } from "@prisma/client";
+import { Plus } from "lucide-react";
 import type { Route } from "./+types/admin-blog-index";
-import { Badge } from "~/components/ui/Badge";
-import { LinkButton } from "~/components/ui/Button";
+import { AdminDataTable, AdminRowActions } from "~/components/admin/AdminDataTable";
 import { DatabaseUnavailable } from "~/components/admin/DatabaseUnavailable";
+import { Badge } from "~/components/ui/shadcn-badge";
+import { Button } from "~/components/ui/shadcn-button";
+import { LinkButton } from "~/components/ui/Button";
 import { db, isDatabaseAvailable } from "~/db.server";
 import { requireAdmin } from "~/lib/session.server";
+
+type BlogRow = {
+  id: string;
+  title: string;
+  slug: string;
+  status: BlogStatus;
+  author: string | null;
+  publishedAt: string | null;
+  updatedAt: string;
+};
+
+const searchFilterFn: FilterFn<BlogRow> = (row, _columnId, filterValue) => {
+  const haystack = `${row.original.title} ${row.original.slug}`.toLowerCase();
+  return haystack.includes(String(filterValue ?? "").toLowerCase());
+};
+
+const statusFilterFn: FilterFn<BlogRow> = (row, columnId, filterValue: string[]) => {
+  if (!filterValue?.length) return true;
+  return filterValue.includes(row.getValue(columnId) as string);
+};
 
 export async function loader({ request }: Route.LoaderArgs) {
   if (!isDatabaseAvailable()) {
@@ -38,63 +64,91 @@ export default function AdminBlogIndex({ loaderData }: Route.ComponentProps) {
 
   const { posts } = loaderData;
 
+  const columns = useMemo<ColumnDef<BlogRow>[]>(
+    () => [
+      {
+        header: "Title",
+        accessorKey: "title",
+        cell: ({ row }) => (
+          <div>
+            <div className="font-medium">{row.original.title}</div>
+            <div className="max-w-40 truncate text-xs text-muted-foreground">
+              {row.original.slug}
+            </div>
+          </div>
+        ),
+        filterFn: searchFilterFn,
+        enableHiding: false,
+        size: 260,
+      },
+      {
+        header: "Status",
+        accessorKey: "status",
+        cell: ({ row }) => (
+          <Badge variant={row.original.status === "published" ? "default" : "secondary"}>
+            {row.original.status}
+          </Badge>
+        ),
+        filterFn: statusFilterFn,
+        size: 120,
+      },
+      {
+        header: "Author",
+        accessorKey: "author",
+        cell: ({ row }) => row.original.author ?? "—",
+        size: 140,
+      },
+      {
+        header: "Published",
+        accessorKey: "publishedAt",
+        cell: ({ row }) =>
+          row.original.publishedAt
+            ? new Date(row.original.publishedAt).toLocaleDateString()
+            : "—",
+        size: 120,
+      },
+      {
+        id: "actions",
+        header: () => <span className="sr-only">Actions</span>,
+        cell: ({ row }) => (
+          <div className="flex justify-end">
+            <AdminRowActions
+              items={[{ label: "Edit", href: `/admin/blog/${row.original.id}` }]}
+            />
+          </div>
+        ),
+        size: 60,
+        enableSorting: false,
+        enableHiding: false,
+      },
+    ],
+    []
+  );
+
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-serif text-navy">Blog</h1>
+        <h1 className="font-serif text-2xl text-navy">Blog</h1>
         <LinkButton href="/admin/blog/new">New Post</LinkButton>
       </div>
-
-      <div className="overflow-x-auto rounded-xl border border-charcoal/10 bg-white">
-        <table className="w-full text-sm">
-          <thead className="border-b border-charcoal/10 bg-sand/50">
-            <tr>
-              <th className="px-4 py-3 text-left font-medium">Title</th>
-              <th className="px-4 py-3 text-left font-medium">Status</th>
-              <th className="hidden px-4 py-3 text-left font-medium md:table-cell">Author</th>
-              <th className="hidden px-4 py-3 text-left font-medium md:table-cell">Published</th>
-              <th className="px-4 py-3 text-right font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {posts.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-charcoal/60">
-                  No blog posts yet.
-                </td>
-              </tr>
-            ) : (
-              posts.map((post) => (
-                <tr key={post.id} className="border-b border-charcoal/5 hover:bg-sand/30">
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-navy">{post.title}</div>
-                    <div className="max-w-[140px] truncate text-xs text-charcoal/50">{post.slug}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge variant={post.status === "published" ? "success" : "warning"}>
-                      {post.status}
-                    </Badge>
-                  </td>
-                  <td className="hidden px-4 py-3 md:table-cell">{post.author ?? "—"}</td>
-                  <td className="hidden px-4 py-3 text-charcoal/60 md:table-cell">
-                    {post.publishedAt
-                      ? new Date(post.publishedAt).toLocaleDateString()
-                      : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <Link
-                      to={`/admin/blog/${post.id}`}
-                      className="inline-flex min-h-11 items-center text-navy hover:text-terracotta"
-                    >
-                      Edit
-                    </Link>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <AdminDataTable
+        data={posts}
+        columns={columns}
+        getRowId={(row) => row.id}
+        searchColumnId="title"
+        searchPlaceholder="Filter by title or slug..."
+        facetColumnId="status"
+        facetLabel="Status"
+        emptyMessage="No blog posts yet."
+        toolbarEnd={
+          <Button asChild variant="outline">
+            <Link to="/admin/blog/new">
+              <Plus className="-ms-1 me-2 opacity-60" size={16} strokeWidth={2} aria-hidden />
+              New post
+            </Link>
+          </Button>
+        }
+      />
     </div>
   );
 }

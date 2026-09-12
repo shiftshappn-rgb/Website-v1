@@ -33,6 +33,10 @@ export function serializeProduct(product: ProductWithRelations) {
     seoTitle: product.seoTitle,
     seoDescription: product.seoDescription,
     seoImage: product.seoImage,
+    fitSummary: product.fitSummary,
+    careInstructions: product.careInstructions,
+    lengthGuide: product.lengthGuide,
+    offerLengths: product.offerLengths,
     category: product.category
       ? { id: product.category.id, name: product.category.name, slug: product.category.slug }
       : null,

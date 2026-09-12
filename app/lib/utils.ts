@@ -35,8 +35,12 @@ export function getVariantPrice(
   return priceOverride ?? basePrice;
 }
 
-export function getVariantLabel(colorName: string, size: string): string {
-  return `${colorName} / ${size}`;
+export function getVariantLabel(
+  colorName: string,
+  size: string,
+  length?: string | null
+): string {
+  return length ? `${colorName} / ${size} / ${length}` : `${colorName} / ${size}`;
 }
 
 export type VariantImage = {

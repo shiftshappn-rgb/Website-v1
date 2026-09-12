@@ -64,6 +64,11 @@ enum BundleDiscountType {
   fixed
 }
 
+enum GiftCardStatus {
+  active
+  disabled
+}
+
 model Product {
   id               String        @id @default(cuid())
   slug             String        @unique
@@ -78,6 +83,10 @@ model Product {
   seoTitle         String?
   seoDescription   String?
   seoImage         String?
+  fitSummary       String?       @db.Text
+  careInstructions String?       @db.Text
+  lengthGuide      String?
+  offerLengths     Boolean       @default(false)
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
@@ -216,11 +225,13 @@ model Customer {
   passwordHash   String?
   name           String?
   marketingOptIn Boolean  @default(false)
+  loyaltyPoints  Int      @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  orders    Order[]
-  addresses Address[]
+  orders         Order[]
+  addresses      Address[]
+  loyaltyLedger  LoyaltyLedger[]
 }
 
 model Address {
@@ -354,4 +365,51 @@ model SiteSetting {
   id    String @id @default(cuid())
   key   String @unique
   value Json
+}
+
+model MonthlyOffer {
+  id           String   @id @default(cuid())
+  title        String
+  subtitle     String?
+  ctaLabel     String   @default("Shop now")
+  ctaHref      String   @default("/shop")
+  discountCode String?
+  startsAt     DateTime
+  endsAt       DateTime
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model GiftCard {
+  id             String         @id @default(cuid())
+  code           String         @unique
+  initialAmount  Decimal        @db.Decimal(10, 2)
+  balance        Decimal        @db.Decimal(10, 2)
+  recipientEmail String?
+  note           String?
+  status         GiftCardStatus @default(active)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model LoyaltyLedger {
+  id         String   @id @default(cuid())
+  customerId String
+  points     Int
+  reason     String
+  orderId    String?
+  createdAt  DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+model CommunityPost {
+  id         String       @id @default(cuid())
+  authorName String
+  title      String
+  body       String       @db.Text
+  image      String?
+  status     ReviewStatus @default(pending)
+  createdAt  DateTime     @default(now())
 }

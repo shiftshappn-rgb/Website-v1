@@ -31,6 +31,8 @@
   --color-border: color-mix(in oklab, var(--color-charcoal) 12%, white);
   --color-input: color-mix(in oklab, var(--color-charcoal) 18%, white);
   --color-ring: var(--color-navy);
+  --color-popover: #ffffff;
+  --color-popover-foreground: var(--color-charcoal);
   --radius: 0.5rem;
   --animate-border-beam: border-beam calc(var(--duration) * 1s) infinite linear;
 }

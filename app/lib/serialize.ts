@@ -34,6 +34,10 @@ export type SerializedProduct = {
   seoTitle: string | null;
   seoDescription: string | null;
   seoImage: string | null;
+  fitSummary: string | null;
+  careInstructions: string | null;
+  lengthGuide: string | null;
+  offerLengths: boolean;
   category: { id: string; name: string; slug: string } | null;
   fabricType: {
     id: string;

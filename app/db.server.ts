@@ -25,7 +25,13 @@ function createPrismaClient(): PrismaClient {
 }
 
 function clientHasCurrentSchema(client: PrismaClient) {
-  return typeof client.catalogColor?.findMany === "function";
+  return (
+    typeof client.catalogColor?.findMany === "function" &&
+    typeof client.monthlyOffer?.findMany === "function" &&
+    typeof client.giftCard?.findMany === "function" &&
+    typeof client.communityPost?.findMany === "function" &&
+    typeof client.loyaltyLedger?.findMany === "function"
+  );
 }
 
 function getPrismaClient(): PrismaClient | null {

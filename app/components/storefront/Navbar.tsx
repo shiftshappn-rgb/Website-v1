@@ -204,6 +204,12 @@ export function Footer() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm">
+            <Link to="/community" prefetch="intent" className="hover:text-sky transition-colors">
+              Community
+            </Link>
+            <Link to="/gift-cards" prefetch="intent" className="hover:text-sky transition-colors">
+              Gift cards
+            </Link>
             <Link to="/about" prefetch="intent" className="hover:text-sky transition-colors">
               About
             </Link>
