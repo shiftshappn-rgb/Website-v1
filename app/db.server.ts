@@ -1,9 +1,7 @@
-import { PrismaNeon } from "@prisma/adapter-neon";
+import { PrismaNeon, PrismaNeonHTTP } from "@prisma/adapter-neon";
 import { neonConfig } from "@neondatabase/serverless";
 import { PrismaClient } from "@prisma/client";
 import ws from "ws";
-
-neonConfig.webSocketConstructor = ws;
 
 declare global {
   // eslint-disable-next-line no-var
@@ -14,12 +12,27 @@ export function isDatabaseAvailable(): boolean {
   return Boolean(process.env.DATABASE_URL);
 }
 
+function isServerlessRuntime() {
+  return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+}
+
 function createPrismaClient(): PrismaClient {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
     throw new Error("DATABASE_URL is not set");
   }
 
+  // WebSockets from `ws` often fail on Vercel/Lambda and Prisma then throws
+  // "External error with reported id was not registered" instead of the real cause.
+  if (isServerlessRuntime()) {
+    const adapter = new PrismaNeonHTTP(connectionString, {
+      arrayMode: false,
+      fullResults: true,
+    });
+    return new PrismaClient({ adapter });
+  }
+
+  neonConfig.webSocketConstructor = ws;
   const adapter = new PrismaNeon({ connectionString });
   return new PrismaClient({ adapter });
 }
