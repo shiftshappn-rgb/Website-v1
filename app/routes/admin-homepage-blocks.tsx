@@ -81,10 +81,16 @@ export async function action({ request }: Route.ActionArgs) {
     });
 
     if (swapBlock) {
-      await db.$transaction([
-        db.homepageBlock.update({ where: { id: block.id }, data: { order: swapBlock.order } }),
-        db.homepageBlock.update({ where: { id: swapBlock.id }, data: { order: block.order } }),
-      ]);
+      const nextOrder = swapBlock.order;
+      const previousOrder = block.order;
+      await db.homepageBlock.update({
+        where: { id: block.id },
+        data: { order: nextOrder },
+      });
+      await db.homepageBlock.update({
+        where: { id: swapBlock.id },
+        data: { order: previousOrder },
+      });
     }
 
     return redirect("/admin/homepage-blocks");
