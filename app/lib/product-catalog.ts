@@ -195,3 +195,10 @@ export function catalogSku(
   const pieceCode = piece === "top" ? "T" : "B";
   return `${styleId}-${pieceCode}-${color}-${size}`;
 }
+
+/** Admin / storefront variant SKU: `{product-slug}-{COLOR}-{SIZE}` */
+export function buildVariantSku(productSlug: string, colorName: string, size: string) {
+  const color = colorName.trim().toUpperCase().replace(/\s+/g, "-");
+  const sizeCode = size.trim().toUpperCase();
+  return `${productSlug}-${color}-${sizeCode}`;
+}

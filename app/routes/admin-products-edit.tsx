@@ -1,20 +1,24 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { ExternalLink } from "lucide-react";
-import { Form, Link, useFetcher, useNavigation } from "react-router";
+import { Form, Link, useNavigation } from "react-router";
 import type { Route } from "./+types/admin-products-edit";
 import { Button } from "~/components/ui/Button";
 import { Input, Select, Textarea } from "~/components/ui/Input";
 import { Badge, Card } from "~/components/ui/Badge";
 import { CloudinaryUploadButton } from "~/components/admin/CloudinaryUploadButton";
+import { AddVariantForm } from "~/components/admin/AddVariantForm";
+import { ColorGroupsEditor } from "~/components/admin/ColorGroupsEditor";
 import { DatabaseUnavailable } from "~/components/admin/DatabaseUnavailable";
-import { VariantImageGallery } from "~/components/admin/VariantImageGallery";
+import {
+  VariantsEditor,
+  type EditVariant,
+} from "~/components/admin/VariantsEditor";
 import { db, isDatabaseAvailable } from "~/db.server";
 import { listCatalogColors } from "~/lib/catalog-colors.server";
 import { cloudinaryImageUrl } from "~/lib/cloudinary";
-import { CATALOG_SIZES } from "~/lib/product-catalog";
+import { buildVariantSku, CATALOG_SIZES } from "~/lib/product-catalog";
 import { requireAdmin } from "~/lib/session.server";
 import {
-  cn,
   normalizeVariantImages,
   parseVariantImages,
   slugify,
@@ -31,16 +35,56 @@ function isUniqueConstraintError(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }
 
-type EditVariant = {
-  id: string;
-  colorName: string;
-  colorHex: string;
-  size: string;
-  sku: string;
-  priceOverride: number | null;
-  inventoryQty: number;
-  images: VariantImage[];
-};
+function parseColorPayloads(formData: FormData) {
+  const colorsJson = String(formData.get("colors") ?? "").trim();
+  if (colorsJson) {
+    try {
+      const parsed = JSON.parse(colorsJson) as Array<{ name?: string; hex?: string }>;
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .map((color) => ({
+          name: String(color.name ?? "").trim(),
+          hex: String(color.hex ?? "#000000").trim() || "#000000",
+        }))
+        .filter((color) => color.name);
+    } catch {
+      return [];
+    }
+  }
+
+  const colorName = String(formData.get("colorName") ?? "").trim();
+  const colorHex = String(formData.get("colorHex") ?? "#000000").trim() || "#000000";
+  return colorName ? [{ name: colorName, hex: colorHex }] : [];
+}
+
+function parseSelectedSizes(formData: FormData) {
+  const sizes = formData
+    .getAll("sizes")
+    .map((value) => String(value).trim())
+    .filter(Boolean);
+  if (sizes.length > 0) return [...new Set(sizes)];
+
+  const single = String(formData.get("size") ?? "").trim();
+  return single ? [single] : [];
+}
+
+/** Map of `colorName::size` → inventory qty from JSON payload. */
+function parseInventoryMap(formData: FormData): Record<string, number> {
+  const raw = String(formData.get("inventories") ?? "").trim();
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const result: Record<string, number> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      const qty = typeof value === "number" ? value : parseInt(String(value), 10);
+      if (!Number.isNaN(qty) && qty >= 0) result[key] = qty;
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
 
 function groupVariantsByColor(variants: EditVariant[]) {
   const groups: Array<{
@@ -141,10 +185,107 @@ export async function action({ request, params }: Route.ActionArgs): Promise<Act
   const intent = String(formData.get("intent") ?? "update-product");
   const productId = params.id!;
 
-  if (intent === "delete-variant") {
-    const variantId = String(formData.get("variantId") ?? "");
-    await db.productVariant.delete({ where: { id: variantId } });
-    return { success: "Variant deleted." };
+  if (intent === "delete-variant" || intent === "bulk-delete-variants") {
+    const variantIds = [
+      ...new Set(
+        formData
+          .getAll("variantId")
+          .map((value) => String(value).trim())
+          .filter(Boolean)
+      ),
+    ];
+
+    if (variantIds.length === 0) {
+      return { error: "Select at least one variant to delete." };
+    }
+
+    const variants = await db.productVariant.findMany({
+      where: { productId, id: { in: variantIds } },
+      select: { id: true, colorName: true, size: true },
+    });
+
+    let deleted = 0;
+    const blocked: string[] = [];
+
+    for (const variant of variants) {
+      const sold = await db.orderItem.findFirst({
+        where: { productVariantId: variant.id },
+        select: { id: true },
+      });
+      if (sold) {
+        blocked.push(`${variant.colorName} / ${variant.size}`);
+        continue;
+      }
+      await db.productVariant.delete({ where: { id: variant.id } });
+      deleted += 1;
+    }
+
+    if (deleted === 0 && blocked.length > 0) {
+      return {
+        error: `${blocked.join(", ")} ${blocked.length === 1 ? "has" : "have"} order history and can’t be deleted.`,
+      };
+    }
+    if (blocked.length > 0) {
+      return {
+        success: `Deleted ${deleted} variant${deleted === 1 ? "" : "s"}. Skipped ${blocked.join(", ")} (order history).`,
+      };
+    }
+    if (deleted === 1 && variants.length === 1) {
+      return {
+        success: `${variants[0].colorName} / ${variants[0].size} was deleted.`,
+      };
+    }
+    return { success: `Deleted ${deleted} variants.` };
+  }
+
+  if (intent === "delete-color" || intent === "bulk-delete-colors") {
+    const colorNames = [
+      ...new Set(
+        formData
+          .getAll("colorName")
+          .map((value) => String(value).trim())
+          .filter(Boolean)
+      ),
+    ];
+
+    if (colorNames.length === 0) {
+      return { error: "Select at least one colour to delete." };
+    }
+
+    let deleted = 0;
+    const blocked: string[] = [];
+
+    for (const colorName of colorNames) {
+      const sold = await db.orderItem.findFirst({
+        where: { productVariant: { productId, colorName } },
+        select: { id: true },
+      });
+      if (sold) {
+        blocked.push(colorName);
+        continue;
+      }
+      const result = await db.productVariant.deleteMany({
+        where: { productId, colorName },
+      });
+      if (result.count > 0) deleted += 1;
+    }
+
+    if (deleted === 0 && blocked.length > 0) {
+      return {
+        error: `${blocked.join(", ")} ${blocked.length === 1 ? "has" : "have"} order history and can’t be deleted.`,
+      };
+    }
+    if (blocked.length > 0) {
+      return {
+        success: `Deleted ${deleted} colour${deleted === 1 ? "" : "s"}. Skipped ${blocked.join(", ")} (order history).`,
+      };
+    }
+    return {
+      success:
+        deleted === 1
+          ? `${colorNames[0]} was deleted.`
+          : `Deleted ${deleted} colours.`,
+    };
   }
 
   if (intent === "update-color-images") {
@@ -177,13 +318,22 @@ export async function action({ request, params }: Route.ActionArgs): Promise<Act
     const colorName = String(formData.get("colorName") ?? "").trim();
     const colorHex = String(formData.get("colorHex") ?? "#000000").trim();
     const size = String(formData.get("size") ?? "").trim();
-    const sku = String(formData.get("sku") ?? "").trim();
     const priceOverrideRaw = String(formData.get("priceOverride") ?? "").trim();
     const inventoryQty = parseInt(String(formData.get("inventoryQty") ?? "0"), 10);
 
-    if (!colorName || !size || !sku) {
-      return { error: "Colour, size, and SKU are required for new variants." };
+    if (!colorName || !size) {
+      return { error: "Colour and size are required for new variants." };
     }
+
+    const product = await db.product.findUnique({
+      where: { id: productId },
+      select: { slug: true },
+    });
+    if (!product) {
+      return { error: "Product not found." };
+    }
+
+    const sku = buildVariantSku(product.slug, colorName, size);
 
     const duplicate = await db.productVariant.findFirst({
       where: { productId, colorName, size },
@@ -212,65 +362,149 @@ export async function action({ request, params }: Route.ActionArgs): Promise<Act
       });
     } catch (error) {
       if (isUniqueConstraintError(error)) {
-        return { error: "SKU already exists." };
+        return { error: `SKU ${sku} already exists.` };
       }
       throw error;
     }
 
-    return { success: "Variant added." };
+    return { success: `Variant added (${sku}).` };
   }
 
-  if (intent === "add-color-sizes") {
-    const colorName = String(formData.get("colorName") ?? "").trim();
-    const colorHex = String(formData.get("colorHex") ?? "#000000").trim();
-    const inventoryQty = parseInt(String(formData.get("inventoryQty") ?? "0"), 10);
-    const qty = Number.isNaN(inventoryQty) ? 0 : inventoryQty;
+  if (intent === "add-color-sizes" || intent === "add-matrix") {
+    const colors = parseColorPayloads(formData);
+    const requestedSizes = parseSelectedSizes(formData);
+    const defaultQty = parseInt(String(formData.get("inventoryQty") ?? "0"), 10);
+    const fallbackQty = Number.isNaN(defaultQty) ? 0 : defaultQty;
+    const inventoryByKey = parseInventoryMap(formData);
 
-    if (!colorName) {
-      return { error: "Pick a colour first." };
+    if (colors.length === 0) {
+      return { error: "Pick at least one colour." };
+    }
+    if (requestedSizes.length === 0) {
+      return { error: "Pick at least one size." };
     }
 
     const product = await db.product.findUnique({
       where: { id: productId },
-      select: { slug: true, variants: { select: { colorName: true, size: true, images: true } } },
+      select: {
+        slug: true,
+        variants: { select: { colorName: true, size: true, images: true, sku: true } },
+      },
     });
     if (!product) {
       return { error: "Product not found." };
     }
 
-    const existingSizes = new Set(
-      product.variants.filter((variant) => variant.colorName === colorName).map((variant) => variant.size)
+    const existingKeys = new Set(
+      product.variants.map((variant) => `${variant.colorName}::${variant.size}`)
     );
-    const sibling = product.variants.find((variant) => variant.colorName === colorName);
-    const images = sibling ? parseVariantImages(sibling.images) : [];
-    const sizesToAdd = CATALOG_SIZES.filter((size) => !existingSizes.has(size));
+    const existingSkus = new Set(product.variants.map((variant) => variant.sku));
 
-    if (sizesToAdd.length === 0) {
-      return { error: `${colorName} already has every size.` };
-    }
+    type CreateRow = {
+      productId: string;
+      colorName: string;
+      colorHex: string;
+      size: string;
+      sku: string;
+      inventoryQty: number;
+      images: ReturnType<typeof parseVariantImages>;
+    };
 
-    const colorSlug = slugify(colorName);
-    try {
-      await db.productVariant.createMany({
-        data: sizesToAdd.map((size) => ({
+    const toCreate: CreateRow[] = [];
+    let skippedExisting = 0;
+
+    for (const color of colors) {
+      const sibling = product.variants.find((variant) => variant.colorName === color.name);
+      const images = sibling ? parseVariantImages(sibling.images) : [];
+
+      for (const size of requestedSizes) {
+        if (existingKeys.has(`${color.name}::${size}`)) {
+          skippedExisting += 1;
+          continue;
+        }
+        const sku = buildVariantSku(product.slug, color.name, size);
+        if (existingSkus.has(sku) || toCreate.some((row) => row.sku === sku)) {
+          skippedExisting += 1;
+          continue;
+        }
+        const key = `${color.name}::${size}`;
+        const rowQty = inventoryByKey[key];
+        toCreate.push({
           productId,
-          colorName,
-          colorHex,
+          colorName: color.name,
+          colorHex: color.hex,
           size,
-          sku: `${product.slug}-${colorSlug}-${size}`.toLowerCase(),
-          inventoryQty: qty,
+          sku,
+          inventoryQty: rowQty ?? fallbackQty,
           images,
-        })),
-        skipDuplicates: true,
-      });
-    } catch (error) {
-      if (isUniqueConstraintError(error)) {
-        return { error: "A SKU for this colour already exists. Add sizes one at a time." };
+        });
+        existingKeys.add(key);
+        existingSkus.add(sku);
       }
-      throw error;
     }
 
-    return { success: `Added ${colorName} in ${sizesToAdd.join(", ")}.` };
+    if (toCreate.length === 0) {
+      return {
+        error:
+          skippedExisting > 0
+            ? "Those colour/size combinations already exist."
+            : "Nothing to add.",
+      };
+    }
+
+    let created = 0;
+    const failedSkus: string[] = [];
+
+    for (const row of toCreate) {
+      try {
+        await db.productVariant.create({
+          data: {
+            productId: row.productId,
+            colorName: row.colorName,
+            colorHex: row.colorHex,
+            size: row.size,
+            sku: row.sku,
+            inventoryQty: row.inventoryQty,
+            images: row.images as Prisma.InputJsonValue,
+          },
+        });
+        created += 1;
+      } catch (error) {
+        if (isUniqueConstraintError(error)) {
+          failedSkus.push(row.sku);
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    if (created === 0) {
+      return {
+        error:
+          failedSkus.length > 0
+            ? `Couldn’t create variants — SKU already in use (${failedSkus.slice(0, 3).join(", ")}${failedSkus.length > 3 ? "…" : ""}).`
+            : "Nothing was created.",
+      };
+    }
+
+    const colourLabel =
+      colors.length === 1
+        ? colors[0].name
+        : `${colors.length} colours`;
+    const sizeLabel =
+      requestedSizes.length === CATALOG_SIZES.length
+        ? "all sizes"
+        : requestedSizes.join(", ");
+    const skippedNote =
+      skippedExisting > 0 ? ` Skipped ${skippedExisting} existing.` : "";
+    const failedNote =
+      failedSkus.length > 0
+        ? ` ${failedSkus.length} skipped (SKU conflict).`
+        : "";
+
+    return {
+      success: `Added ${created} variant${created === 1 ? "" : "s"} (${colourLabel} × ${sizeLabel}).${skippedNote}${failedNote}`,
+    };
   }
 
   if (intent === "update-variant") {
@@ -447,7 +681,12 @@ export default function AdminProductsEdit({ loaderData, actionData }: Route.Comp
         </div>
       )}
 
-      <Form id="product-form" method="post" className="space-y-6">
+      <Form
+        id="product-form"
+        method="post"
+        className="space-y-6"
+        key={`product-${product.id}-${product.updatedAt}`}
+      >
         <input type="hidden" name="intent" value="update-product" />
 
         <Card className="space-y-4">
@@ -608,37 +847,27 @@ export default function AdminProductsEdit({ loaderData, actionData }: Route.Comp
             Add a colour and size below before uploading photos.
           </p>
         ) : (
-          colorGroups.map((group) => (
-            <ColorMediaBlock
-              key={group.colorName}
-              colorName={group.colorName}
-              colorHex={group.colorHex}
-              images={group.images}
-              productName={product.name}
-              cloudName={cloudName}
-            />
-          ))
+          <ColorGroupsEditor groups={colorGroups} productName={product.name} cloudName={cloudName} />
         )}
       </Card>
 
       <Card className="space-y-4">
         <h2 className="font-serif text-lg text-navy">Variants</h2>
         {product.variants.length > 0 && (
-          <div className="space-y-3">
-            <div className="hidden gap-3 text-xs font-medium uppercase tracking-wide text-charcoal/50 md:grid md:grid-cols-[1.2fr_5.5rem_1fr_6rem_6rem_auto]">
-              <span>Colour</span>
-              <span>Size</span>
-              <span>SKU</span>
-              <span>Inventory</span>
-              <span>Price override</span>
-              <span className="sr-only">Actions</span>
-            </div>
-            {product.variants.map((variant) => (
-              <VariantRow key={variant.id} variant={variant} />
-            ))}
-          </div>
+          <VariantsEditor
+            key={product.variants.map((variant) => variant.id).join("-")}
+            variants={product.variants}
+          />
         )}
-        <AddVariantForm catalogColors={catalogColors} />
+        <AddVariantForm
+          key={`add-${product.variants.length}-${product.updatedAt}`}
+          productSlug={product.slug}
+          catalogColors={catalogColors}
+          existingVariants={product.variants.map((variant) => ({
+            colorName: variant.colorName,
+            size: variant.size,
+          }))}
+        />
       </Card>
 
       <div className="sticky bottom-0 z-20 -mx-4 flex flex-wrap items-center justify-end gap-3 border-t border-charcoal/10 bg-sand/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur lg:-mx-8 lg:px-8">
@@ -649,309 +878,6 @@ export default function AdminProductsEdit({ loaderData, actionData }: Route.Comp
           {savingProduct ? "Saving…" : "Save product"}
         </Button>
       </div>
-    </div>
-  );
-}
-
-function ColorMediaBlock({
-  colorName,
-  colorHex,
-  images,
-  productName,
-  cloudName,
-}: {
-  colorName: string;
-  colorHex: string;
-  images: VariantImage[];
-  productName: string;
-  cloudName: string | null;
-}) {
-  const fetcher = useFetcher<ActionResult>();
-  const saving = fetcher.state !== "idle";
-
-  function persist(next: VariantImage[]) {
-    const formData = new FormData();
-    formData.set("intent", "update-color-images");
-    formData.set("colorName", colorName);
-    formData.set("images", JSON.stringify(next));
-    fetcher.submit(formData, { method: "post" });
-  }
-
-  return (
-    <div className="space-y-3 rounded-lg border border-charcoal/10 p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <span
-          className="size-4 rounded-full border border-charcoal/15"
-          style={{ backgroundColor: colorHex }}
-          aria-hidden
-        />
-        <h3 className="font-medium text-navy">{colorName}</h3>
-        {saving && <span className="text-xs text-charcoal/50">Saving…</span>}
-        {fetcher.data?.success && fetcher.state === "idle" && (
-          <span className="text-xs text-green-700">{fetcher.data.success}</span>
-        )}
-      </div>
-      {fetcher.data?.error && (
-        <p className="text-sm text-red-700" role="alert">
-          {fetcher.data.error}
-        </p>
-      )}
-      <VariantImageGallery
-        images={images}
-        cloudName={cloudName}
-        defaultAlt={`${productName} ${colorName}`}
-        onChange={persist}
-      />
-    </div>
-  );
-}
-
-function VariantRow({ variant }: { variant: EditVariant }) {
-  const fetcher = useFetcher<ActionResult>();
-  const deleteFetcher = useFetcher<ActionResult>();
-  const saving = fetcher.state !== "idle";
-  const deleting = deleteFetcher.state !== "idle";
-
-  return (
-    <div className="rounded-lg border border-charcoal/10 p-3 md:border-0 md:p-0">
-      <fetcher.Form
-        method="post"
-        className="grid gap-3 md:grid-cols-[1.2fr_5.5rem_1fr_6rem_6rem_auto] md:items-end"
-      >
-        <input type="hidden" name="intent" value="update-variant" />
-        <input type="hidden" name="variantId" value={variant.id} />
-        <ColorHexInput
-          key={`${variant.id}-${variant.colorHex}`}
-          name="colorName"
-          hexName="colorHex"
-          defaultName={variant.colorName}
-          defaultHex={variant.colorHex}
-          id={`color-${variant.id}`}
-          compact
-        />
-        <Input
-          id={`size-${variant.id}`}
-          name="size"
-          defaultValue={variant.size}
-          required
-          aria-label="Size"
-        />
-        <Input
-          id={`sku-${variant.id}`}
-          name="sku"
-          defaultValue={variant.sku}
-          required
-          aria-label="SKU"
-        />
-        <Input
-          id={`inventory-${variant.id}`}
-          name="inventoryQty"
-          type="number"
-          defaultValue={variant.inventoryQty}
-          aria-label="Inventory"
-        />
-        <Input
-          id={`price-${variant.id}`}
-          name="priceOverride"
-          type="number"
-          step="0.01"
-          defaultValue={variant.priceOverride ?? ""}
-          aria-label="Price override"
-        />
-        <div className="flex flex-wrap gap-2">
-          <Button type="submit" size="sm" disabled={saving}>
-            {saving ? "Saving…" : "Save"}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="text-red-700"
-            disabled={deleting}
-            onClick={() => {
-              if (
-                !confirm(
-                  `Delete ${variant.colorName} / ${variant.size}? This cannot be undone.`
-                )
-              ) {
-                return;
-              }
-              const formData = new FormData();
-              formData.set("intent", "delete-variant");
-              formData.set("variantId", variant.id);
-              deleteFetcher.submit(formData, { method: "post" });
-            }}
-          >
-            {deleting ? "Deleting…" : "Delete"}
-          </Button>
-        </div>
-      </fetcher.Form>
-      {(fetcher.data?.error || deleteFetcher.data?.error) && (
-        <p className="mt-2 text-sm text-red-700" role="alert">
-          {fetcher.data?.error || deleteFetcher.data?.error}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function AddVariantForm({
-  catalogColors,
-}: {
-  catalogColors: Array<{ id: string; name: string; hex: string }>;
-}) {
-  const fetcher = useFetcher<ActionResult>();
-  const formRef = useRef<HTMLFormElement>(null);
-  const [formKey, setFormKey] = useState(0);
-  const saving = fetcher.state !== "idle";
-
-  useEffect(() => {
-    if (fetcher.state === "idle" && fetcher.data?.success) {
-      formRef.current?.reset();
-      setFormKey((key) => key + 1);
-    }
-  }, [fetcher.state, fetcher.data]);
-
-  return (
-    <div className="rounded-lg border border-dashed border-charcoal/20 p-4">
-      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="font-medium text-navy">Add variant</h3>
-        <Link
-          to="/admin/colors"
-          className="text-xs font-medium text-navy underline underline-offset-4 hover:text-terracotta"
-        >
-          Manage colours
-        </Link>
-      </div>
-      <fetcher.Form ref={formRef} method="post" className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-3">
-          <ColorHexInput
-            key={formKey}
-            name="colorName"
-            hexName="colorHex"
-            defaultName=""
-            defaultHex="#B07A7A"
-            palette={catalogColors}
-          />
-          <Input label="Size" name="size" required />
-          <Input label="SKU" name="sku" required />
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Input label="Inventory" name="inventoryQty" type="number" defaultValue="0" />
-          <Input label="Price Override" name="priceOverride" type="number" step="0.01" />
-        </div>
-        {fetcher.data?.error && (
-          <p className="text-sm text-red-700" role="alert">
-            {fetcher.data.error}
-          </p>
-        )}
-        {fetcher.data?.success && fetcher.state === "idle" && (
-          <p className="text-sm text-green-700">{fetcher.data.success}</p>
-        )}
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="submit"
-            size="sm"
-            variant="terracotta"
-            name="intent"
-            value="add-variant"
-            disabled={saving}
-          >
-            {saving ? "Adding…" : "Add variant"}
-          </Button>
-          <Button
-            type="submit"
-            size="sm"
-            variant="outline"
-            name="intent"
-            value="add-color-sizes"
-            formNoValidate
-            disabled={saving}
-          >
-            Add colour in all sizes
-          </Button>
-        </div>
-        <p className="text-xs text-charcoal/50">
-          Click a saved swatch to fill the name. All sizes uses XXS–5XL.
-        </p>
-      </fetcher.Form>
-    </div>
-  );
-}
-
-function ColorHexInput({
-  name,
-  hexName,
-  defaultName,
-  defaultHex,
-  id,
-  compact = false,
-  palette = [],
-}: {
-  name: string;
-  hexName: string;
-  defaultName: string;
-  defaultHex: string;
-  id?: string;
-  compact?: boolean;
-  palette?: Array<{ id: string; name: string; hex: string }>;
-}) {
-  const [hex, setHex] = useState(defaultHex);
-  const [colorName, setColorName] = useState(defaultName);
-  const safeHex = /^#[0-9A-Fa-f]{6}$/.test(hex) ? hex : "#000000";
-  const colorId = id ?? name;
-
-  return (
-    <div className="space-y-1">
-      <label
-        htmlFor={colorId}
-        className={cn("block text-sm font-medium text-charcoal", compact && "md:sr-only")}
-      >
-        Colour
-      </label>
-      <div className="flex items-center gap-2">
-        <input
-          type="color"
-          value={safeHex}
-          onChange={(event) => setHex(event.target.value)}
-          className="size-11 shrink-0 cursor-pointer rounded-lg border border-charcoal/20 bg-white p-1"
-          aria-label="Pick colour"
-        />
-        <input type="hidden" name={hexName} value={safeHex} />
-        <input
-          id={colorId}
-          name={name}
-          value={colorName}
-          onChange={(event) => setColorName(event.target.value)}
-          required
-          placeholder="Navy"
-          className="w-full min-w-0 rounded-lg border border-charcoal/20 bg-white px-3 py-2.5 text-sm text-charcoal placeholder:text-charcoal/40 focus:border-navy focus:outline-none focus:ring-1 focus:ring-navy"
-        />
-      </div>
-      {palette.length > 0 && !compact ? (
-        <div className="flex flex-wrap gap-1.5 pt-1">
-          {palette.map((color) => {
-            const selected = colorName === color.name;
-            return (
-              <button
-                key={color.id}
-                type="button"
-                title={color.name}
-                onClick={() => {
-                  setColorName(color.name);
-                  setHex(color.hex);
-                }}
-                className={cn(
-                  "size-11 rounded-full border transition-transform hover:scale-110",
-                  selected ? "border-navy ring-2 ring-navy/30" : "border-charcoal/15"
-                )}
-                style={{ backgroundColor: color.hex }}
-                aria-label={color.name}
-              />
-            );
-          })}
-        </div>
-      ) : null}
     </div>
   );
 }

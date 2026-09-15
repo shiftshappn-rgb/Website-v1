@@ -46,6 +46,10 @@ export default [
   route("api/webhook", "routes/api-webhook.ts"),
   route("sitemap.xml", "routes/sitemap.ts"),
   route("robots.txt", "routes/robots.ts"),
+  route(
+    ".well-known/appspecific/com.chrome.devtools.json",
+    "routes/chrome-devtools-well-known.ts"
+  ),
   ...prefix("admin", [
     route("login", "routes/admin-login.tsx"),
     route("api/cloudinary-sign", "routes/api-admin-cloudinary-sign.ts"),
