@@ -179,6 +179,34 @@ export async function loadProductsByCollectionSlugs(slugs: string[]) {
   return Object.fromEntries(pairs) as Record<string, ProductCardData[]>;
 }
 
+export async function loadProductGridBlockProducts(content: {
+  productSlugs?: string[];
+  collectionSlug?: string;
+}) {
+  if (content.productSlugs?.length) {
+    return loadProductsBySlugs(content.productSlugs);
+  }
+  if (content.collectionSlug) {
+    return loadCollectionProducts(content.collectionSlug);
+  }
+  return [] as ProductCardData[];
+}
+
+export async function loadProductsBySlugs(slugs: string[]) {
+  const db = tryDb();
+  if (!db || slugs.length === 0) return [] as ProductCardData[];
+
+  const rows = await db.product.findMany({
+    where: { slug: { in: slugs }, status: "active" },
+    select: productCardSelect,
+  });
+
+  const bySlug = new Map(rows.map((row) => [row.slug, serializeProductForCard(row)]));
+  return slugs
+    .map((slug) => bySlug.get(slug))
+    .filter((product): product is ProductCardData => product != null);
+}
+
 export async function loadCollectionPage(slug: string) {
   const db = tryDb();
   if (!db) return null;

@@ -12,6 +12,29 @@ import { getVariantPrice } from "~/lib/utils";
 
 const APP_URL = process.env.APP_URL ?? "http://localhost:5173";
 
+type ProductLine = {
+  kind: "product";
+  variantId: string;
+  quantity: number;
+  price: number;
+  productName: string;
+  variantLabel: string;
+};
+
+type GiftCardLine = {
+  kind: "gift_card";
+  amount: number;
+  quantity: number;
+  recipientEmail?: string;
+  giftNote?: string;
+};
+
+type CheckoutLine = ProductLine | GiftCardLine;
+
+function isGiftCardItem(item: CartItem) {
+  return (item.kind ?? "product") === "gift_card";
+}
+
 export async function action({ request }: Route.ActionArgs) {
   if (request.method !== "POST") {
     throw data("Method not allowed", { status: 405 });
@@ -42,15 +65,33 @@ export async function action({ request }: Route.ActionArgs) {
     return data({ error: "Store unavailable" }, { status: 503 });
   }
 
-  const lineItems: Array<{
-    variantId: string;
-    quantity: number;
-    price: number;
-    productName: string;
-    variantLabel: string;
-  }> = [];
+  const lineItems: CheckoutLine[] = [];
+  const hasGiftCards = cartItems.some(isGiftCardItem);
+  const hasProducts = cartItems.some((item) => !isGiftCardItem(item));
+
+  if (hasGiftCards && giftCardCodeRaw) {
+    return data(
+      { error: "Gift cards cannot be purchased with another gift card." },
+      { status: 400 }
+    );
+  }
 
   for (const item of cartItems) {
+    if (isGiftCardItem(item)) {
+      const amount = item.giftAmount ?? item.price;
+      if (!Number.isFinite(amount) || amount < 10) {
+        return data({ error: "Invalid gift card amount." }, { status: 400 });
+      }
+      lineItems.push({
+        kind: "gift_card",
+        amount,
+        quantity: item.quantity,
+        recipientEmail: item.recipientEmail?.trim() || undefined,
+        giftNote: item.giftNote?.trim() || undefined,
+      });
+      continue;
+    }
+
     const variant = await db.productVariant.findUnique({
       where: { id: item.variantId },
       include: { product: true },
@@ -73,6 +114,7 @@ export async function action({ request }: Route.ActionArgs) {
     );
 
     lineItems.push({
+      kind: "product",
       variantId: variant.id,
       quantity: item.quantity,
       price,
@@ -81,8 +123,13 @@ export async function action({ request }: Route.ActionArgs) {
     });
   }
 
-  const subtotal = lineItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const originalShipping = subtotal >= 100 ? 0 : 9.95;
+  const subtotal = lineItems.reduce((sum, item) => {
+    const price = item.kind === "gift_card" ? item.amount : item.price;
+    return sum + price * item.quantity;
+  }, 0);
+
+  const originalShipping =
+    hasProducts && subtotal >= 100 ? 0 : hasProducts ? 9.95 : 0;
   let shipping = originalShipping;
   let discountAmount = 0;
 
@@ -104,10 +151,16 @@ export async function action({ request }: Route.ActionArgs) {
     }
   }
 
-  const merchandise = Math.max(0, subtotal - (shipping === 0 && discountAmount === originalShipping ? 0 : Math.min(discountAmount, subtotal)));
+  const merchandise = Math.max(
+    0,
+    subtotal -
+      (shipping === 0 && discountAmount === originalShipping
+        ? 0
+        : Math.min(discountAmount, subtotal))
+  );
   let giftCardAmount = 0;
 
-  if (giftCardCodeRaw) {
+  if (giftCardCodeRaw && hasProducts) {
     const resolved = await resolveGiftCard(db, giftCardCodeRaw);
     if ("error" in resolved) {
       return data({ error: resolved.error }, { status: 400 });
@@ -115,7 +168,8 @@ export async function action({ request }: Route.ActionArgs) {
     giftCardAmount = Math.min(Number(resolved.card.balance), merchandise + shipping);
   }
 
-  const tax = Math.round((merchandise + shipping - giftCardAmount) * 0.13 * 100) / 100;
+  const tax =
+    Math.round((merchandise + shipping - giftCardAmount) * 0.13 * 100) / 100;
   const total = Math.max(0, merchandise + shipping - giftCardAmount + tax);
   const stripeOriginal = subtotal + originalShipping;
   const stripePayable = merchandise + shipping - giftCardAmount;
@@ -141,24 +195,45 @@ export async function action({ request }: Route.ActionArgs) {
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     payment_method_types: ["card"],
-    line_items: lineItems.map((item) => ({
-      price_data: {
-        currency: "cad",
-        product_data: {
-          name: item.productName,
-          description: item.variantLabel,
+    line_items: lineItems.map((item) => {
+      if (item.kind === "gift_card") {
+        return {
+          price_data: {
+            currency: "cad",
+            product_data: {
+              name: "ShiftsHappn e-gift card",
+              description: item.recipientEmail
+                ? `Digital gift · $${item.amount} · to ${item.recipientEmail}`
+                : `Digital gift · $${item.amount}`,
+            },
+            unit_amount: Math.round(item.amount * 100),
+          },
+          quantity: item.quantity,
+        };
+      }
+
+      return {
+        price_data: {
+          currency: "cad",
+          product_data: {
+            name: item.productName,
+            description: item.variantLabel,
+          },
+          unit_amount: Math.round(item.price * 100),
         },
-        unit_amount: Math.round(item.price * 100),
-      },
-      quantity: item.quantity,
-    })),
+        quantity: item.quantity,
+      };
+    }),
     shipping_options:
       originalShipping > 0
         ? [
             {
               shipping_rate_data: {
                 type: "fixed_amount",
-                fixed_amount: { amount: Math.round(originalShipping * 100), currency: "cad" },
+                fixed_amount: {
+                  amount: Math.round(originalShipping * 100),
+                  currency: "cad",
+                },
                 display_name: "Standard shipping",
               },
             },
@@ -167,15 +242,7 @@ export async function action({ request }: Route.ActionArgs) {
     discounts,
     automatic_tax: { enabled: false },
     metadata: {
-      lineItems: JSON.stringify(
-        lineItems.map((item) => ({
-          variantId: item.variantId,
-          quantity: item.quantity,
-          price: item.price,
-          productName: item.productName,
-          variantLabel: item.variantLabel,
-        }))
-      ),
+      lineItems: JSON.stringify(lineItems),
       subtotal: subtotal.toFixed(2),
       shipping: shipping.toFixed(2),
       tax: tax.toFixed(2),
@@ -183,9 +250,11 @@ export async function action({ request }: Route.ActionArgs) {
       discountCode: discountCodeRaw.toUpperCase(),
       giftCardCode: giftCardCodeRaw.toUpperCase(),
       giftCardAmount: giftCardAmount.toFixed(2),
+      hasGiftCards: hasGiftCards ? "true" : "false",
+      hasProducts: hasProducts ? "true" : "false",
     },
     success_url: `${APP_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${APP_URL}/`,
+    cancel_url: `${APP_URL}/gift-cards`,
   });
 
   if (!session.url) {

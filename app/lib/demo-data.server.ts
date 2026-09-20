@@ -93,7 +93,9 @@ export const demoHomepageBlocks: DemoHomepageBlock[] = [
     isActive: true,
     content: {
       headline: "Best sellers",
+      layout: "carousel",
       collectionSlug: "best-sellers",
+      productSlugs: ["nova-top", "zephyr-top", "luna-pants", "eclipse-top", "aura-pants"],
     },
   },
   {
@@ -121,9 +123,24 @@ export const demoHomepageBlocks: DemoHomepageBlock[] = [
     },
   },
   {
+    id: "demo-gift-card-banner",
+    type: "giftCardBanner",
+    order: 7,
+    isActive: true,
+    content: {
+      badge: "GIFTING",
+      headline: "Give the gift of a better shift",
+      body: "Digital codes for new grads, night-shift friends, or your whole unit. Redeem on any order.",
+      ctaLabel: "Shop gift cards",
+      ctaLink: "/gift-cards",
+      amounts: [50, 100, 150],
+      previewAmount: 100,
+    },
+  },
+  {
     id: "demo-fabric-callout",
     type: "fabricCallout",
-    order: 7,
+    order: 8,
     isActive: true,
     content: {
       headline: "THE FABRIC",
@@ -136,7 +153,7 @@ export const demoHomepageBlocks: DemoHomepageBlock[] = [
   {
     id: "demo-brand-story",
     type: "brandStory",
-    order: 8,
+    order: 9,
     isActive: true,
     content: {
       badge: "OUR STORY",
@@ -149,7 +166,7 @@ export const demoHomepageBlocks: DemoHomepageBlock[] = [
   {
     id: "demo-review-highlight",
     type: "reviewHighlight",
-    order: 9,
+    order: 10,
     isActive: true,
     content: {
       reviews: [
@@ -180,7 +197,7 @@ export const demoHomepageBlocks: DemoHomepageBlock[] = [
   {
     id: "demo-value-props",
     type: "valuePropsRow",
-    order: 10,
+    order: 11,
     isActive: true,
     content: {
       items: [

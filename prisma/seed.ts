@@ -261,7 +261,9 @@ async function main() {
       order: 4,
       content: {
         headline: "Best sellers",
+        layout: "carousel",
         collectionSlug: "best-sellers",
+        productSlugs: ["nova-top", "zephyr-top", "luna-pants", "eclipse-top", "aura-pants"],
       },
     },
     {
@@ -285,8 +287,21 @@ async function main() {
       },
     },
     {
-      type: HomepageBlockType.fabricCallout,
+      type: HomepageBlockType.giftCardBanner,
       order: 7,
+      content: {
+        badge: "GIFTING",
+        headline: "Give the gift of a better shift",
+        body: "Digital codes for new grads, night-shift friends, or your whole unit. Redeem on any order.",
+        ctaLabel: "Shop gift cards",
+        ctaLink: "/gift-cards",
+        amounts: [50, 100, 150],
+        previewAmount: 100,
+      },
+    },
+    {
+      type: HomepageBlockType.fabricCallout,
+      order: 8,
       content: {
         headline: "THE FABRIC",
         subheadline:
@@ -297,7 +312,7 @@ async function main() {
     },
     {
       type: HomepageBlockType.brandStory,
-      order: 8,
+      order: 9,
       content: {
         badge: "OUR STORY",
         headline:
@@ -308,7 +323,7 @@ async function main() {
     },
     {
       type: HomepageBlockType.reviewHighlight,
-      order: 9,
+      order: 10,
       content: {
         reviews: [
           {
@@ -337,7 +352,7 @@ async function main() {
     },
     {
       type: HomepageBlockType.valuePropsRow,
-      order: 10,
+      order: 11,
       content: {
         items: [
           { label: "Canadian made", icon: "map-pin" },
@@ -361,6 +376,15 @@ async function main() {
     if (!hasMarquee) {
       await db.homepageBlock.create({
         data: homepageBlocks.find((b) => b.type === HomepageBlockType.marquee)!,
+      });
+    }
+
+    const hasGiftCardBanner = await db.homepageBlock.findFirst({
+      where: { type: HomepageBlockType.giftCardBanner },
+    });
+    if (!hasGiftCardBanner) {
+      await db.homepageBlock.create({
+        data: homepageBlocks.find((b) => b.type === HomepageBlockType.giftCardBanner)!,
       });
     }
   }
@@ -414,6 +438,30 @@ async function main() {
     where: { key: "low_stock_threshold" },
     update: {},
     create: { key: "low_stock_threshold", value: 5 },
+  });
+
+  await db.siteSetting.upsert({
+    where: { key: "giftCardSellEnabled" },
+    update: {},
+    create: { key: "giftCardSellEnabled", value: { enabled: true } },
+  });
+  await db.siteSetting.upsert({
+    where: { key: "giftCardDenominations" },
+    update: {},
+    create: {
+      key: "giftCardDenominations",
+      value: { values: [50, 75, 100, 150, 200, 250] },
+    },
+  });
+  await db.siteSetting.upsert({
+    where: { key: "giftCardIntroCopy" },
+    update: {},
+    create: {
+      key: "giftCardIntroCopy",
+      value: {
+        text: "Give the gift of choice. Digital codes are emailed after checkout and can be redeemed on any order.",
+      },
+    },
   });
 
   console.log("Seed complete!");

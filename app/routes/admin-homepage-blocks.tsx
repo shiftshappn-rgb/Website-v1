@@ -4,9 +4,12 @@ import { Button } from "~/components/ui/Button";
 import { Input, Select, Textarea } from "~/components/ui/Input";
 import { Badge, Card } from "~/components/ui/Badge";
 import { DatabaseUnavailable } from "~/components/admin/DatabaseUnavailable";
+import { ProductGridBlockEditor } from "~/components/admin/ProductGridBlockEditor";
+import type { ProductGridContent } from "~/components/homepage-blocks/types";
 import { db, isDatabaseAvailable } from "~/db.server";
 import { requireAdmin } from "~/lib/session.server";
 import type { HomepageBlockType } from "@prisma/client";
+import { ProductStatus } from "@prisma/client";
 
 const blockTypes: HomepageBlockType[] = [
   "hero",
@@ -20,6 +23,7 @@ const blockTypes: HomepageBlockType[] = [
   "brandStory",
   "reviewHighlight",
   "valuePropsRow",
+  "giftCardBanner",
 ];
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -29,18 +33,28 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   await requireAdmin(request);
 
-  const blocks = await db.homepageBlock.findMany({
-    orderBy: { order: "asc" },
-  });
+  const [blocks, catalogProducts] = await Promise.all([
+    db.homepageBlock.findMany({
+      orderBy: { order: "asc" },
+    }),
+    db.product.findMany({
+      where: { status: ProductStatus.active },
+      select: { slug: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
 
   return {
     dbAvailable: true as const,
+    catalogProducts,
     blocks: blocks.map((b) => ({
       id: b.id,
       type: b.type,
       order: b.order,
       isActive: b.isActive,
       content: JSON.stringify(b.content, null, 2),
+      productGridContent:
+        b.type === "productGrid" ? (b.content as ProductGridContent) : null,
     })),
   };
 }
@@ -96,6 +110,35 @@ export async function action({ request }: Route.ActionArgs) {
     return redirect("/admin/homepage-blocks");
   }
 
+  if (intent === "updateProductGrid") {
+    const id = String(formData.get("id") ?? "");
+    const headline = String(formData.get("headline") ?? "").trim();
+    const layout = String(formData.get("layout") ?? "grid");
+    const collectionSlug = String(formData.get("collectionSlug") ?? "").trim();
+    const productSlugs = formData
+      .getAll("productSlugs")
+      .map((value) => String(value).trim())
+      .filter(Boolean);
+
+    if (!headline) {
+      return { error: "Headline is required." };
+    }
+
+    await db.homepageBlock.update({
+      where: { id },
+      data: {
+        content: {
+          headline,
+          layout: layout === "carousel" ? "carousel" : "grid",
+          ...(collectionSlug ? { collectionSlug } : {}),
+          ...(productSlugs.length ? { productSlugs } : {}),
+        },
+      },
+    });
+
+    return redirect("/admin/homepage-blocks");
+  }
+
   if (intent === "update") {
     const id = String(formData.get("id") ?? "");
     const contentRaw = String(formData.get("content") ?? "{}");
@@ -140,7 +183,7 @@ export default function AdminHomepageBlocks({ loaderData, actionData }: Route.Co
     return <DatabaseUnavailable />;
   }
 
-  const { blocks } = loaderData;
+  const { blocks, catalogProducts } = loaderData;
 
   return (
     <div className="space-y-6">
@@ -221,20 +264,28 @@ export default function AdminHomepageBlocks({ loaderData, actionData }: Route.Co
                 </div>
               </div>
 
-              <Form method="post" className="space-y-3">
-                <input type="hidden" name="intent" value="update" />
-                <input type="hidden" name="id" value={block.id} />
-                <Textarea
-                  label={`Content JSON (${block.type})`}
-                  name="content"
-                  defaultValue={block.content}
-                  rows={6}
-                  className="font-mono text-xs"
+              {block.type === "productGrid" && block.productGridContent ? (
+                <ProductGridBlockEditor
+                  blockId={block.id}
+                  content={block.productGridContent}
+                  catalogProducts={catalogProducts}
                 />
-                <Button type="submit" size="sm">
-                  Save Content
-                </Button>
-              </Form>
+              ) : (
+                <Form method="post" className="space-y-3">
+                  <input type="hidden" name="intent" value="update" />
+                  <input type="hidden" name="id" value={block.id} />
+                  <Textarea
+                    label={`Content JSON (${block.type})`}
+                    name="content"
+                    defaultValue={block.content}
+                    rows={6}
+                    className="font-mono text-xs"
+                  />
+                  <Button type="submit" size="sm">
+                    Save Content
+                  </Button>
+                </Form>
+              )}
             </Card>
           ))
         )}
