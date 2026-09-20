@@ -9,7 +9,8 @@ export type HomepageBlockType =
   | "fabricCallout"
   | "brandStory"
   | "reviewHighlight"
-  | "valuePropsRow";
+  | "valuePropsRow"
+  | "giftCardBanner";
 
 export interface HomepageBlock {
   id: string;
@@ -30,7 +31,8 @@ export type HomepageBlockContent =
   | FabricCalloutContent
   | BrandStoryContent
   | ReviewHighlightContent
-  | ValuePropsRowContent;
+  | ValuePropsRowContent
+  | GiftCardBannerContent;
 
 export interface HeroContent {
   headline: string;
@@ -64,7 +66,9 @@ export interface CategoryDuoContent {
 
 export interface ProductGridContent {
   headline: string;
-  collectionSlug: string;
+  collectionSlug?: string;
+  productSlugs?: string[];
+  layout?: "grid" | "carousel";
 }
 
 export interface BundleBannerContent {
@@ -115,6 +119,16 @@ export interface ReviewHighlightContent {
 
 export interface ValuePropsRowContent {
   items: { label: string; icon?: string }[];
+}
+
+export interface GiftCardBannerContent {
+  badge?: string;
+  headline: string;
+  body?: string;
+  ctaLabel: string;
+  ctaLink: string;
+  amounts?: number[];
+  previewAmount?: number;
 }
 
 export interface ProductColorSwatch {

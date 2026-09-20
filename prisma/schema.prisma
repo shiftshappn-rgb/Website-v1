@@ -57,6 +57,7 @@ enum HomepageBlockType {
   brandStory
   reviewHighlight
   valuePropsRow
+  giftCardBanner
 }
 
 enum BundleDiscountType {
@@ -67,6 +68,16 @@ enum BundleDiscountType {
 enum GiftCardStatus {
   active
   disabled
+}
+
+enum GiftCardSource {
+  admin
+  purchase
+}
+
+enum OrderLineType {
+  product
+  gift_card
 }
 
 model Product {
@@ -267,21 +278,23 @@ model Order {
   createdAt             DateTime    @default(now())
   updatedAt             DateTime    @updatedAt
 
-  customer Customer?   @relation(fields: [customerId], references: [id])
-  items    OrderItem[]
+  customer  Customer?  @relation(fields: [customerId], references: [id])
+  items     OrderItem[]
+  giftCards GiftCard[]
 }
 
 model OrderItem {
-  id               String  @id @default(cuid())
+  id               String        @id @default(cuid())
   orderId          String
-  productVariantId String
+  lineType         OrderLineType @default(product)
+  productVariantId String?
   quantity         Int
-  priceAtPurchase  Decimal @db.Decimal(10, 2)
+  priceAtPurchase  Decimal       @db.Decimal(10, 2)
   productName      String
   variantLabel     String
 
-  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productVariant ProductVariant @relation(fields: [productVariantId], references: [id])
+  order          Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productVariant ProductVariant? @relation(fields: [productVariantId], references: [id])
 }
 
 model Review {
@@ -386,11 +399,16 @@ model GiftCard {
   code           String         @unique
   initialAmount  Decimal        @db.Decimal(10, 2)
   balance        Decimal        @db.Decimal(10, 2)
+  purchaserEmail String?
   recipientEmail String?
   note           String?
+  source         GiftCardSource @default(admin)
+  orderId        String?
   status         GiftCardStatus @default(active)
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
+
+  order Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
 }
 
 model LoyaltyLedger {

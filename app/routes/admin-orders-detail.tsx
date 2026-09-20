@@ -17,7 +17,11 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 
   const order = await db.order.findUnique({
     where: { id: params.id },
-    include: { items: true, customer: { select: { name: true, email: true } } },
+    include: {
+      items: true,
+      giftCards: true,
+      customer: { select: { name: true, email: true } },
+    },
   });
 
   if (!order) {
@@ -35,6 +39,14 @@ export async function loader({ request, params }: Route.LoaderArgs) {
       items: order.items.map((i) => ({
         ...i,
         priceAtPurchase: Number(i.priceAtPurchase),
+      })),
+      giftCards: order.giftCards.map((card) => ({
+        id: card.id,
+        code: card.code,
+        balance: Number(card.balance),
+        initialAmount: Number(card.initialAmount),
+        recipientEmail: card.recipientEmail,
+        status: card.status,
       })),
     },
   };
@@ -182,7 +194,14 @@ export default function AdminOrdersDetail({ loaderData, actionData }: Route.Comp
           <tbody>
             {order.items.map((item) => (
               <tr key={item.id} className="border-b border-charcoal/5">
-                <td className="py-2">{item.productName}</td>
+                <td className="py-2">
+                  {item.productName}
+                  {item.lineType === "gift_card" && (
+                    <Badge variant="default" className="ml-2">
+                      E-gift
+                    </Badge>
+                  )}
+                </td>
                 <td className="py-2 text-charcoal/60">{item.variantLabel}</td>
                 <td className="py-2">{item.quantity}</td>
                 <td className="py-2 text-right">{formatCurrency(item.priceAtPurchase)}</td>
@@ -191,6 +210,31 @@ export default function AdminOrdersDetail({ loaderData, actionData }: Route.Comp
           </tbody>
         </table>
       </Card>
+
+      {order.giftCards.length > 0 && (
+        <Card>
+          <h2 className="mb-4 font-serif text-lg text-navy">Issued gift cards</h2>
+          <div className="space-y-3">
+            {order.giftCards.map((card) => (
+              <div
+                key={card.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-charcoal/10 px-4 py-3 text-sm"
+              >
+                <div>
+                  <p className="font-mono font-medium text-navy">{card.code}</p>
+                  <p className="text-charcoal/60">
+                    {formatCurrency(card.balance)} left of {formatCurrency(card.initialAmount)}
+                    {card.recipientEmail ? ` · ${card.recipientEmail}` : ""}
+                  </p>
+                </div>
+                <Badge variant={card.status === "active" ? "success" : "default"}>
+                  {card.status}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <div className="flex flex-wrap gap-3">
         {order.status === "paid" && (

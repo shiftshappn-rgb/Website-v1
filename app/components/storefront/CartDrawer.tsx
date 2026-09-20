@@ -1,4 +1,4 @@
-import { X, Minus, Plus } from "lucide-react";
+import { Gift, X, Minus, Plus } from "lucide-react";
 import { Form } from "react-router";
 import { useCart } from "~/lib/cart";
 import { cn, formatCurrency } from "~/lib/utils";
@@ -21,8 +21,16 @@ function CloudinaryImage({
 }
 
 export function CartDrawer() {
-  const { items, isOpen, closeCart, removeItem, updateQuantity, subtotal } =
-    useCart();
+  const {
+    items,
+    isOpen,
+    closeCart,
+    removeItem,
+    updateQuantity,
+    subtotal,
+    hasGiftCards,
+    isGiftCardsOnly,
+  } = useCart();
 
   return (
     <div
@@ -65,10 +73,19 @@ export function CartDrawer() {
               Your cart is empty
             </p>
           ) : (
-            items.map((item) => (
+            items.map((item) => {
+              const isGift = (item.kind ?? "product") === "gift_card";
+              return (
               <div key={item.variantId} className="flex gap-4">
                 <div className="w-20 h-24 bg-stone rounded-lg overflow-hidden flex-shrink-0">
-                  {item.imagePublicId ? (
+                  {isGift ? (
+                    <div className="flex h-full w-full flex-col items-center justify-center bg-sky/20 text-sky">
+                      <Gift className="h-6 w-6" />
+                      <span className="mt-1 text-[10px] font-semibold uppercase tracking-wider">
+                        E-gift
+                      </span>
+                    </div>
+                  ) : item.imagePublicId ? (
                     <CloudinaryImage
                       publicId={item.imagePublicId}
                       alt={item.imageAlt ?? item.productName}
@@ -115,7 +132,8 @@ export function CartDrawer() {
                   </div>
                 </div>
               </div>
-            ))
+            );
+            })
           )}
         </div>
 
@@ -126,7 +144,9 @@ export function CartDrawer() {
               <span className="font-medium">{formatCurrency(subtotal())}</span>
             </div>
             <p className="text-xs text-charcoal/50">
-              Shipping and taxes calculated at checkout
+              {isGiftCardsOnly()
+                ? "Digital delivery — codes emailed after checkout"
+                : "Shipping and taxes calculated at checkout"}
             </p>
             <Form method="post" action="/api/checkout" className="space-y-3">
               <input
@@ -140,12 +160,14 @@ export function CartDrawer() {
                 className="w-full rounded-lg border border-charcoal/20 px-3 py-2.5 text-sm"
                 autoComplete="off"
               />
-              <input
-                name="giftCardCode"
-                placeholder="Gift card"
-                className="w-full rounded-lg border border-charcoal/20 px-3 py-2.5 text-sm"
-                autoComplete="off"
-              />
+              {!hasGiftCards() && (
+                <input
+                  name="giftCardCode"
+                  placeholder="Gift card"
+                  className="w-full rounded-lg border border-charcoal/20 px-3 py-2.5 text-sm"
+                  autoComplete="off"
+                />
+              )}
               <Button type="submit" variant="terracotta" className="w-full">
                 Proceed to checkout
               </Button>
