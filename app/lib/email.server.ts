@@ -53,6 +53,63 @@ export async function sendOrderConfirmationEmail({
   });
 }
 
+export async function sendGiftCardEmail({
+  to,
+  code,
+  amount,
+  note,
+  recipientName,
+  isRecipient = false,
+  bcc,
+}: {
+  to: string;
+  code: string;
+  amount: string;
+  note?: string | null;
+  recipientName?: string;
+  isRecipient?: boolean;
+  bcc?: string;
+}) {
+  const client = getResend();
+  if (!client) {
+    console.log("[email] Resend not configured, skipping gift card email");
+    return;
+  }
+
+  const greeting = isRecipient
+    ? recipientName
+      ? `<p>Hi ${recipientName},</p>`
+      : `<p>Hi there,</p>`
+    : `<p>Thanks for your purchase.</p>`;
+
+  const intro = isRecipient
+    ? `<p>Someone sent you a ShiftsHappn e-gift card worth <strong>${amount}</strong>.</p>`
+    : `<p>Your ShiftsHappn e-gift card is ready.</p>`;
+
+  const noteBlock = note
+    ? `<p style="margin:16px 0;padding:16px;background:#F6F1E9;border-radius:8px;color:#1C2B36"><em>${note}</em></p>`
+    : "";
+
+  await client.emails.send({
+    from: "shiftshappn <orders@shiftshappn.com>",
+    to,
+    bcc: bcc ? [bcc] : undefined,
+    subject: isRecipient
+      ? "You received a ShiftsHappn gift card"
+      : "Your ShiftsHappn gift card",
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#1C2B36">
+        <h1 style="color:#1D4E78;font-family:serif">ShiftsHappn e-gift card</h1>
+        ${greeting}
+        ${intro}
+        ${noteBlock}
+        <p style="font-size:18px;margin:24px 0"><strong>Code:</strong> <code style="background:#F6F1E9;padding:8px 12px;border-radius:6px;font-size:16px">${code}</code></p>
+        <p style="color:#666">Redeem this code at checkout on shiftshappn.com. Balance can be checked on the gift cards page.</p>
+      </div>
+    `,
+  });
+}
+
 export async function sendShippingUpdateEmail({
   to,
   orderNumber,

@@ -9,6 +9,7 @@ import { FabricCalloutBlock } from "./FabricCalloutBlock";
 import { BrandStoryBlock } from "./BrandStoryBlock";
 import { ReviewHighlightBlock } from "./ReviewHighlightBlock";
 import { ValuePropsRowBlock } from "./ValuePropsRowBlock";
+import { GiftCardBannerBlock } from "./GiftCardBannerBlock";
 import type {
   HomepageBlock,
   ProductGridContent,
@@ -20,7 +21,8 @@ export type { HomepageBlock, ProductSummary } from "./types";
 export interface BlockRendererProps {
   blocks: HomepageBlock[];
   cloudName?: string;
-  products?: Record<string, ProductSummary[]>;
+  /** Product lists keyed by homepage block id */
+  productsByBlockId?: Record<string, ProductSummary[]>;
 }
 
 function asContent<T>(content: Record<string, unknown>): T {
@@ -30,7 +32,7 @@ function asContent<T>(content: Record<string, unknown>): T {
 function renderBlock(
   block: HomepageBlock,
   cloudName?: string,
-  products?: Record<string, ProductSummary[]>
+  productsByBlockId?: Record<string, ProductSummary[]>
 ) {
   const common = { cloudName };
 
@@ -73,7 +75,7 @@ function renderBlock(
         <ProductGridBlock
           key={block.id}
           content={content}
-          products={products?.[content.collectionSlug] ?? []}
+          products={productsByBlockId?.[block.id] ?? []}
           {...common}
         />
       );
@@ -126,6 +128,14 @@ function renderBlock(
           {...common}
         />
       );
+    case "giftCardBanner":
+      return (
+        <GiftCardBannerBlock
+          key={block.id}
+          content={asContent<Parameters<typeof GiftCardBannerBlock>[0]["content"]>(block.content)}
+          {...common}
+        />
+      );
     default:
       return null;
   }
@@ -134,7 +144,7 @@ function renderBlock(
 export function BlockRenderer({
   blocks,
   cloudName,
-  products,
+  productsByBlockId,
 }: BlockRendererProps) {
   const activeBlocks = blocks
     .filter((block) => block.isActive !== false)
@@ -142,7 +152,7 @@ export function BlockRenderer({
 
   return (
     <div className="homepage-blocks">
-      {activeBlocks.map((block) => renderBlock(block, cloudName, products))}
+      {activeBlocks.map((block) => renderBlock(block, cloudName, productsByBlockId))}
     </div>
   );
 }

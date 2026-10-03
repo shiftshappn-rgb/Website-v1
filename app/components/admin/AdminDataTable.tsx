@@ -179,19 +179,19 @@ export function AdminDataTable<TData>({
     const column = table.getColumn(facetColumnId);
     if (!column) return [];
     return Array.from(column.getFacetedUniqueValues().keys()).sort() as string[];
-  }, [facetColumnId, table.getColumn(facetColumnId)?.getFacetedUniqueValues()]);
+  }, [facetColumnId, table.getColumn(facetColumnId ?? "")?.getFacetedUniqueValues()]);
 
   const facetCounts = useMemo(() => {
     if (!facetColumnId) return new Map<string, number>();
     const column = table.getColumn(facetColumnId);
     if (!column) return new Map<string, number>();
     return column.getFacetedUniqueValues();
-  }, [facetColumnId, table.getColumn(facetColumnId)?.getFacetedUniqueValues()]);
+  }, [facetColumnId, table.getColumn(facetColumnId ?? "")?.getFacetedUniqueValues()]);
 
   const selectedFacetValues = useMemo(() => {
     if (!facetColumnId) return [];
     return (table.getColumn(facetColumnId)?.getFilterValue() as string[] | undefined) ?? [];
-  }, [facetColumnId, table.getColumn(facetColumnId)?.getFilterValue()]);
+  }, [facetColumnId, table.getColumn(facetColumnId ?? "")?.getFilterValue()]);
 
   function handleFacetChange(checked: boolean, value: string) {
     if (!facetColumnId) return;

@@ -1,8 +1,10 @@
-import { X, Minus, Plus } from "lucide-react";
-import { Form } from "react-router";
+import { useEffect, useState } from "react";
+import { Gift, X, Minus, Plus } from "lucide-react";
+import { useFetcher } from "react-router";
 import { useCart } from "~/lib/cart";
 import { cn, formatCurrency } from "~/lib/utils";
 import { Button } from "~/components/ui/Button";
+import { Link } from "react-router";
 
 function CloudinaryImage({
   publicId,
@@ -21,8 +23,23 @@ function CloudinaryImage({
 }
 
 export function CartDrawer() {
-  const { items, isOpen, closeCart, removeItem, updateQuantity, subtotal } =
-    useCart();
+  const fetcher = useFetcher<any>();
+  const [isHydrated, setIsHydrated] = useState(false);
+  useEffect(() => setIsHydrated(true), []);
+
+  const cartState = useCart();
+  const items = isHydrated ? cartState.items : [];
+  const isOpen = isHydrated ? cartState.isOpen : false;
+  
+  const {
+    closeCart,
+    removeItem,
+    updateQuantity,
+    subtotal,
+    hasGiftCards,
+    isGiftCardsOnly,
+  } = cartState;
+
 
   return (
     <div
@@ -65,10 +82,19 @@ export function CartDrawer() {
               Your cart is empty
             </p>
           ) : (
-            items.map((item) => (
+            items.map((item) => {
+              const isGift = (item.kind ?? "product") === "gift_card";
+              return (
               <div key={item.variantId} className="flex gap-4">
                 <div className="w-20 h-24 bg-stone rounded-lg overflow-hidden flex-shrink-0">
-                  {item.imagePublicId ? (
+                  {isGift ? (
+                    <div className="flex h-full w-full flex-col items-center justify-center bg-sky/20 text-sky">
+                      <Gift className="h-6 w-6" />
+                      <span className="mt-1 text-[10px] font-semibold uppercase tracking-wider">
+                        E-gift
+                      </span>
+                    </div>
+                  ) : item.imagePublicId ? (
                     <CloudinaryImage
                       publicId={item.imagePublicId}
                       alt={item.imageAlt ?? item.productName}
@@ -115,7 +141,8 @@ export function CartDrawer() {
                   </div>
                 </div>
               </div>
-            ))
+            );
+            })
           )}
         </div>
 
@@ -126,30 +153,19 @@ export function CartDrawer() {
               <span className="font-medium">{formatCurrency(subtotal())}</span>
             </div>
             <p className="text-xs text-charcoal/50">
-              Shipping and taxes calculated at checkout
+              {isGiftCardsOnly()
+                ? "Digital delivery — codes emailed after checkout"
+                : "Shipping and taxes calculated at checkout"}
             </p>
-            <Form method="post" action="/api/checkout" className="space-y-3">
-              <input
-                type="hidden"
-                name="cart"
-                value={JSON.stringify(items)}
-              />
-              <input
-                name="discountCode"
-                placeholder="Discount code"
-                className="w-full rounded-lg border border-charcoal/20 px-3 py-2.5 text-sm"
-                autoComplete="off"
-              />
-              <input
-                name="giftCardCode"
-                placeholder="Gift card"
-                className="w-full rounded-lg border border-charcoal/20 px-3 py-2.5 text-sm"
-                autoComplete="off"
-              />
-              <Button type="submit" variant="terracotta" className="w-full">
+            <div className="space-y-3">
+              <Link
+                to="/checkout"
+                className="inline-flex w-full items-center justify-center rounded-lg bg-terracotta px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-terracotta/90"
+                onClick={closeCart}
+              >
                 Proceed to checkout
-              </Button>
-            </Form>
+              </Link>
+            </div>
           </div>
         )}
       </div>

@@ -2,9 +2,54 @@ import { data } from "react-router";
 import type Stripe from "stripe";
 import type { Route } from "./+types/api-webhook";
 import { tryDb } from "~/db.server";
-import { sendOrderConfirmationEmail } from "~/lib/email.server";
+import { generateGiftCardCode } from "~/lib/commerce.server";
+import {
+  sendGiftCardEmail,
+  sendOrderConfirmationEmail,
+} from "~/lib/email.server";
 import { getStripe } from "~/lib/stripe.server";
 import { formatCurrency, generateOrderNumber } from "~/lib/utils";
+
+type ProductLine = {
+  kind: "product";
+  variantId: string;
+  quantity: number;
+  price: number;
+  productName: string;
+  variantLabel: string;
+};
+
+type GiftCardLine = {
+  kind: "gift_card";
+  amount: number;
+  quantity: number;
+  recipientEmail?: string;
+  giftNote?: string;
+};
+
+type CheckoutLine = ProductLine | GiftCardLine;
+
+type LegacyProductLine = {
+  variantId: string;
+  quantity: number;
+  price: number;
+  productName: string;
+  variantLabel: string;
+};
+
+function normalizeCheckoutLine(
+  item: CheckoutLine | LegacyProductLine
+): CheckoutLine {
+  if ("kind" in item && item.kind) return item;
+  return {
+    kind: "product",
+    variantId: item.variantId,
+    quantity: item.quantity,
+    price: item.price,
+    productName: item.productName,
+    variantLabel: item.variantLabel,
+  };
+}
 
 export async function action({ request }: Route.ActionArgs) {
   if (request.method !== "POST") {
@@ -76,13 +121,9 @@ async function handleCheckoutCompleted(
     return;
   }
 
-  const lineItems = JSON.parse(lineItemsRaw) as Array<{
-    variantId: string;
-    quantity: number;
-    price: number;
-    productName: string;
-    variantLabel: string;
-  }>;
+  const lineItems = (JSON.parse(lineItemsRaw) as Array<CheckoutLine | LegacyProductLine>).map(
+    normalizeCheckoutLine
+  );
 
   const email = session.customer_details?.email ?? session.customer_email ?? "";
   const shippingAddress = session.collected_information?.shipping_details?.address
@@ -91,7 +132,8 @@ async function handleCheckoutCompleted(
         line2: session.collected_information.shipping_details.address.line2 ?? "",
         city: session.collected_information.shipping_details.address.city ?? "",
         province: session.collected_information.shipping_details.address.state ?? "",
-        postalCode: session.collected_information.shipping_details.address.postal_code ?? "",
+        postalCode:
+          session.collected_information.shipping_details.address.postal_code ?? "",
         country: session.collected_information.shipping_details.address.country ?? "CA",
       }
     : {
@@ -124,23 +166,70 @@ async function handleCheckoutCompleted(
       status: "paid",
       shippingAddress,
       items: {
-        create: lineItems.map((item) => ({
-          productVariantId: item.variantId,
-          quantity: item.quantity,
-          priceAtPurchase: item.price,
-          productName: item.productName,
-          variantLabel: item.variantLabel,
-        })),
+        create: lineItems.map((item) => {
+          if (item.kind === "gift_card") {
+            return {
+              lineType: "gift_card",
+              quantity: item.quantity,
+              priceAtPurchase: item.amount,
+              productName: "ShiftsHappn e-gift card",
+              variantLabel: item.recipientEmail
+                ? `Digital · $${item.amount} · to ${item.recipientEmail}`
+                : `Digital · $${item.amount}`,
+            };
+          }
+
+          return {
+            lineType: "product",
+            productVariantId: item.variantId,
+            quantity: item.quantity,
+            priceAtPurchase: item.price,
+            productName: item.productName,
+            variantLabel: item.variantLabel,
+          };
+        }),
       },
     },
     include: { items: true },
   });
 
+  const issuedCodes: Array<{
+    code: string;
+    amount: number;
+    recipientEmail?: string;
+    giftNote?: string;
+  }> = [];
+
   for (const item of lineItems) {
-    await db.productVariant.update({
-      where: { id: item.variantId },
-      data: { inventoryQty: { decrement: item.quantity } },
-    });
+    if (item.kind === "product") {
+      await db.productVariant.update({
+        where: { id: item.variantId },
+        data: { inventoryQty: { decrement: item.quantity } },
+      });
+      continue;
+    }
+
+    for (let i = 0; i < item.quantity; i++) {
+      const code = generateGiftCardCode();
+      await db.giftCard.create({
+        data: {
+          code,
+          initialAmount: item.amount,
+          balance: item.amount,
+          purchaserEmail: email || null,
+          recipientEmail: item.recipientEmail ?? null,
+          note: item.giftNote ?? null,
+          source: "purchase",
+          orderId: order.id,
+        },
+      });
+      issuedCodes.push({
+        code,
+        amount: item.amount,
+        recipientEmail: item.recipientEmail,
+        giftNote: item.giftNote,
+      });
+    }
   }
 
   const discountCode = metadata.discountCode?.trim();
@@ -163,7 +252,8 @@ async function handleCheckoutCompleted(
     }
   }
 
-  if (email) {
+  const hasProducts = lineItems.some((item) => item.kind === "product");
+  if (email && hasProducts) {
     const points = Math.max(0, Math.floor(subtotal));
     const customer = await db.customer.findUnique({ where: { email } });
     if (customer && points > 0) {
@@ -182,16 +272,51 @@ async function handleCheckoutCompleted(
     }
   }
 
-  await sendOrderConfirmationEmail({
-    to: email,
-    orderNumber: order.orderNumber,
-    total: formatCurrency(total),
-    items: order.items.map((item) => ({
-      name: `${item.productName} (${item.variantLabel})`,
-      quantity: item.quantity,
-      price: formatCurrency(Number(item.priceAtPurchase) * item.quantity),
-    })),
-  });
+  if (email) {
+    await sendOrderConfirmationEmail({
+      to: email,
+      orderNumber: order.orderNumber,
+      total: formatCurrency(total),
+      items: order.items.map((item) => ({
+        name:
+          item.lineType === "gift_card"
+            ? item.productName
+            : `${item.productName} (${item.variantLabel})`,
+        quantity: item.quantity,
+        price: formatCurrency(Number(item.priceAtPurchase) * item.quantity),
+      })),
+    });
+  }
+
+  for (const issued of issuedCodes) {
+    if (issued.recipientEmail) {
+      await sendGiftCardEmail({
+        to: issued.recipientEmail,
+        code: issued.code,
+        amount: formatCurrency(issued.amount),
+        note: issued.giftNote,
+        isRecipient: true,
+        bcc: email || undefined,
+      });
+      if (email && email !== issued.recipientEmail) {
+        await sendGiftCardEmail({
+          to: email,
+          code: issued.code,
+          amount: formatCurrency(issued.amount),
+          note: issued.giftNote,
+          isRecipient: false,
+        });
+      }
+    } else if (email) {
+      await sendGiftCardEmail({
+        to: email,
+        code: issued.code,
+        amount: formatCurrency(issued.amount),
+        note: issued.giftNote,
+        isRecipient: false,
+      });
+    }
+  }
 }
 
 async function handleChargeRefunded(
@@ -218,9 +343,16 @@ async function handleChargeRefunded(
   });
 
   for (const item of order.items) {
-    await db.productVariant.update({
-      where: { id: item.productVariantId },
-      data: { inventoryQty: { increment: item.quantity } },
-    });
+    if (item.lineType === "product" && item.productVariantId) {
+      await db.productVariant.update({
+        where: { id: item.productVariantId },
+        data: { inventoryQty: { increment: item.quantity } },
+      });
+    }
   }
+
+  await db.giftCard.updateMany({
+    where: { orderId: order.id },
+    data: { status: "disabled", balance: 0 },
+  });
 }
