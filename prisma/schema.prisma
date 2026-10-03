@@ -80,6 +80,48 @@ enum OrderLineType {
   gift_card
 }
 
+enum LocationType {
+  hospital
+  clinic
+  other
+}
+
+model DeliveryLocation {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  type          LocationType @default(other)
+  line1         String
+  line2         String?
+  city          String   @default("Halifax")
+  province      String   @default("NS")
+  postalCode    String
+  country       String   @default("CA")
+  freeDelivery  Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  timeSlots     DeliveryTimeSlot[]
+  orders        Order[]
+}
+
+model DeliveryTimeSlot {
+  id                 String   @id @default(cuid())
+  deliveryLocationId String
+  dayOfWeek          Int
+  startTime          String
+  endTime            String
+  label              String
+  maxOrders          Int?
+  isActive           Boolean  @default(true)
+
+  deliveryLocation   DeliveryLocation @relation(fields: [deliveryLocationId], references: [id], onDelete: Cascade)
+  orders             Order[]
+
+  @@unique([deliveryLocationId, dayOfWeek, startTime])
+}
+
 model Product {
   id               String        @id @default(cuid())
   slug             String        @unique
@@ -234,6 +276,8 @@ model Customer {
   id             String   @id @default(cuid())
   email          String   @unique
   passwordHash   String?
+  googleId       String?  @unique
+  avatarUrl      String?
   name           String?
   marketingOptIn Boolean  @default(false)
   loyaltyPoints  Int      @default(0)
@@ -275,12 +319,18 @@ model Order {
   status                OrderStatus @default(pending)
   shippingAddress       Json
   billingAddress        Json?
+  deliveryLocationId    String?
+  deliveryTimeSlotId    String?
+  shippingMethod        String?
+  shippingCost          Decimal     @db.Decimal(10, 2) @default(0)
   createdAt             DateTime    @default(now())
   updatedAt             DateTime    @updatedAt
 
-  customer  Customer?  @relation(fields: [customerId], references: [id])
-  items     OrderItem[]
-  giftCards GiftCard[]
+  customer              Customer?          @relation(fields: [customerId], references: [id])
+  deliveryLocation      DeliveryLocation?  @relation(fields: [deliveryLocationId], references: [id])
+  deliveryTimeSlot      DeliveryTimeSlot?  @relation(fields: [deliveryTimeSlotId], references: [id])
+  items                 OrderItem[]
+  giftCards             GiftCard[]
 }
 
 model OrderItem {

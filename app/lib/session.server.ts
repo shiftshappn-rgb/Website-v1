@@ -149,17 +149,20 @@ export async function destroyAdminSession(request: Request) {
   });
 }
 
-export async function createCustomerSession(
-  customerId: string,
-  redirectTo = "/account"
-) {
+export async function commitCustomerSessionCookie(customerId: string) {
   const session = await customerSessionStorage.getSession();
   session.set("customerId", customerId);
-  return redirect(redirectTo, {
-    headers: {
-      "Set-Cookie": await customerSessionStorage.commitSession(session),
-    },
-  });
+  return customerSessionStorage.commitSession(session);
+}
+
+export async function createCustomerSession(
+  customerId: string,
+  redirectTo = "/account",
+  extraHeaders: HeadersInit = {}
+) {
+  const headers = new Headers(extraHeaders);
+  headers.append("Set-Cookie", await commitCustomerSessionCookie(customerId));
+  return redirect(redirectTo, { headers });
 }
 
 export async function destroyCustomerSession(request: Request) {

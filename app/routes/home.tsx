@@ -35,7 +35,7 @@ function toProductSummary(product: (typeof demoProducts)[number]): ProductSummar
     id: product.id,
     slug: product.slug,
     name: product.name,
-    shortDescription: product.shortDescription,
+    shortDescription: product.shortDescription ?? undefined,
     basePrice: product.basePrice,
     compareAtPrice: product.compareAtPrice,
     colors,
@@ -61,7 +61,7 @@ async function loadProductsByBlockId(
   const productGridBlocks = blocks.filter((block) => block.type === "productGrid");
   const entries = await Promise.all(
     productGridBlocks.map(async (block) => {
-      const content = block.content as ProductGridContent;
+      const content = block.content as unknown as ProductGridContent;
       const products = await loadProductGridBlockProducts(content);
       return [block.id, products] as const;
     })
@@ -78,7 +78,7 @@ export async function loader() {
         .filter((block) => block.type === "productGrid")
         .map((block) => [
           block.id,
-          demoProductsForGrid(block.content as ProductGridContent),
+          demoProductsForGrid(block.content as unknown as ProductGridContent),
         ])
     );
 

@@ -55,6 +55,15 @@ export default function Account({ loaderData }: Route.ComponentProps) {
 
       <div className="grid sm:grid-cols-2 gap-4 mb-12">
         <Link
+          to="/account/profile"
+          className="p-6 rounded-xl border border-charcoal/10 bg-white hover:border-navy/30 transition-colors sm:col-span-2"
+        >
+          <h2 className="font-serif text-lg text-navy">Profile</h2>
+          <p className="mt-1 text-sm text-charcoal/60">
+            View your details, loyalty points, and saved addresses
+          </p>
+        </Link>
+        <Link
           to="/account/orders"
           className="p-6 rounded-xl border border-charcoal/10 bg-white hover:border-navy/30 transition-colors"
         >

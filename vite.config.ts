@@ -7,4 +7,7 @@ export default defineConfig({
   resolve: {
     tsconfigPaths: true,
   },
+  optimizeDeps: {
+    include: ["@stripe/stripe-js"],
+  },
 });

@@ -140,6 +140,7 @@ export interface ProductSummary {
   id: string;
   slug: string;
   name: string;
+  shortDescription?: string;
   basePrice: number | string;
   compareAtPrice?: number | string | null;
   imagePublicId?: string;

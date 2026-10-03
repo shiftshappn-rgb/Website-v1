@@ -26,7 +26,9 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   const order = await db.order.findFirst({
-    where: { stripeSessionId: sessionId },
+    where: {
+      OR: [{ orderNumber: sessionId }, { stripeSessionId: sessionId }],
+    },
     include: { items: true },
   });
 

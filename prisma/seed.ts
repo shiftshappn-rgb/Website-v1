@@ -464,6 +464,127 @@ async function main() {
     },
   });
 
+  await db.siteSetting.upsert({
+    where: { key: "shippingRates" },
+    update: {},
+    create: {
+      key: "shippingRates",
+      value: { standard: 9.95, express: 15.0, freeThreshold: 100 },
+    },
+  });
+
+  const hospitals = [
+    {
+      name: "Halifax Infirmary - Abbie J Lane Building",
+      line1: "1796 Summer Street",
+      line2: "Abbie J Lane Building",
+      postalCode: "B3H 3A7",
+    },
+    {
+      name: "Halifax Infirmary - Veterans Memorial Building",
+      line1: "1796 Summer Street",
+      line2: "Veterans Memorial Building",
+      postalCode: "B3H 3A7",
+    },
+    {
+      name: "Nova Scotia Rehabilitation Centre",
+      line1: "1341 Summer Street",
+      line2: "",
+      postalCode: "B3H 4K4",
+    },
+    {
+      name: "Victoria General - Dickson Building",
+      line1: "278 Pleasant Street",
+      line2: "Dickson Building",
+      postalCode: "B3H 3A7",
+    },
+    {
+      name: "Victoria General - Mackenzie Building",
+      line1: "278 Pleasant Street",
+      line2: "Mackenzie Building",
+      postalCode: "B3H 3A7",
+    },
+    {
+      name: "Victoria General - Centennial Building",
+      line1: "278 Pleasant Street",
+      line2: "Centennial Building",
+      postalCode: "B3H 3A7",
+    },
+    {
+      name: "IWK Emergency",
+      line1: "5850 University Avenue",
+      line2: "Emergency Department",
+      postalCode: "B3K 6R8",
+    },
+    {
+      name: "IWK Health Centre",
+      line1: "5850 University Avenue",
+      line2: "",
+      postalCode: "B3K 6R8",
+    },
+    {
+      name: "Dalhousie - Charles Tupper Building",
+      line1: "5850 College Street",
+      line2: "Charles Tupper Medical Building",
+      postalCode: "B3H 4R2",
+    },
+    {
+      name: "QEII Health Sciences Centre - Halifax Infirmary",
+      line1: "1796 Summer Street",
+      line2: "Halifax Infirmary",
+      postalCode: "B3H 3A7",
+    },
+  ];
+
+  const defaultTimeSlots = [
+    { dayOfWeek: 1, label: "Morning", startTime: "08:00", endTime: "12:00", maxOrders: 10, isActive: true },
+    { dayOfWeek: 1, label: "Afternoon", startTime: "12:00", endTime: "16:00", maxOrders: 10, isActive: true },
+    { dayOfWeek: 1, label: "Evening", startTime: "16:00", endTime: "20:00", maxOrders: 5, isActive: true },
+    { dayOfWeek: 2, label: "Morning", startTime: "08:00", endTime: "12:00", maxOrders: 10, isActive: true },
+    { dayOfWeek: 2, label: "Afternoon", startTime: "12:00", endTime: "16:00", maxOrders: 10, isActive: true },
+    { dayOfWeek: 2, label: "Evening", startTime: "16:00", endTime: "20:00", maxOrders: 5, isActive: true },
+    { dayOfWeek: 3, label: "Morning", startTime: "08:00", endTime: "12:00", maxOrders: 10, isActive: true },
+    { dayOfWeek: 3, label: "Afternoon", startTime: "12:00", endTime: "16:00", maxOrders: 10, isActive: true },
+    { dayOfWeek: 3, label: "Evening", startTime: "16:00", endTime: "20:00", maxOrders: 5, isActive: true },
+    { dayOfWeek: 4, label: "Morning", startTime: "08:00", endTime: "12:00", maxOrders: 10, isActive: true },
+    { dayOfWeek: 4, label: "Afternoon", startTime: "12:00", endTime: "16:00", maxOrders: 10, isActive: true },
+    { dayOfWeek: 4, label: "Evening", startTime: "16:00", endTime: "20:00", maxOrders: 5, isActive: true },
+    { dayOfWeek: 5, label: "Morning", startTime: "08:00", endTime: "12:00", maxOrders: 10, isActive: true },
+    { dayOfWeek: 5, label: "Afternoon", startTime: "12:00", endTime: "16:00", maxOrders: 10, isActive: true },
+    { dayOfWeek: 5, label: "Evening", startTime: "16:00", endTime: "20:00", maxOrders: 5, isActive: true },
+  ];
+
+  for (let i = 0; i < hospitals.length; i++) {
+    const hospital = hospitals[i];
+    await db.deliveryLocation.upsert({
+      where: { name: hospital.name },
+      update: {},
+      create: {
+        name: hospital.name,
+        type: "hospital",
+        line1: hospital.line1,
+        line2: hospital.line2 || null,
+        city: "Halifax",
+        province: "NS",
+        postalCode: hospital.postalCode,
+        country: "CA",
+        freeDelivery: true,
+        isActive: true,
+        sortOrder: i,
+        timeSlots: {
+          create: defaultTimeSlots.map((slot) => ({
+            dayOfWeek: slot.dayOfWeek,
+            label: slot.label,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            maxOrders: slot.maxOrders,
+            isActive: slot.isActive,
+          })),
+        },
+      },
+    });
+  }
+
   console.log("Seed complete!");
   console.log("Admin login: admin@shiftshappn.com / admin123");
 }

@@ -23,13 +23,17 @@ export function AnnouncementBar() {
 export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const itemCount = useCart((s) => s.itemCount());
+  const [isHydrated, setIsHydrated] = useState(false);
+  
+  const rawItemCount = useCart((s) => s.itemCount());
+  const itemCount = isHydrated ? rawItemCount : 0;
   const openCart = useCart((s) => s.openCart);
   const location = useLocation();
   const isHome = location.pathname === "/";
   const overlay = isHome && !scrolled;
 
   useEffect(() => {
+    setIsHydrated(true);
     function onScroll() {
       setScrolled(window.scrollY > 48);
     }

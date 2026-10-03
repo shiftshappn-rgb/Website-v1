@@ -54,7 +54,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       isActive: b.isActive,
       content: JSON.stringify(b.content, null, 2),
       productGridContent:
-        b.type === "productGrid" ? (b.content as ProductGridContent) : null,
+        b.type === "productGrid" ? (b.content as unknown as ProductGridContent) : null,
     })),
   };
 }

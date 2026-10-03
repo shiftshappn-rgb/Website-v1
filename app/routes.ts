@@ -31,6 +31,7 @@ export default [
     route("policies/:slug", "routes/policy-page.tsx"),
     ...prefix("account", [
       index("routes/account.tsx"),
+      route("profile", "routes/account-profile.tsx"),
       route("orders", "routes/account-orders.tsx"),
       route("addresses", "routes/account-addresses.tsx"),
       route("rewards", "routes/account-rewards.tsx"),
@@ -39,6 +40,15 @@ export default [
       route("login", "routes/auth-login.tsx"),
       route("register", "routes/auth-register.tsx"),
       route("logout", "routes/auth-logout.tsx"),
+      route("google", "routes/auth-google.tsx"),
+      route("google/callback", "routes/auth-google-callback.tsx"),
+    ]),
+  ]),
+  ...prefix("checkout", [
+    layout("routes/checkout-layout.tsx", [
+      index("routes/checkout.tsx"),
+      route("shipping", "routes/checkout-shipping.tsx"),
+      route("payment", "routes/checkout-payment.tsx"),
     ]),
   ]),
   route("checkout/success", "routes/checkout-success.tsx"),
@@ -82,6 +92,11 @@ export default [
       route("media", "routes/admin-media.tsx"),
       route("reviews", "routes/admin-reviews.tsx"),
       route("settings", "routes/admin-settings.tsx"),
+      ...prefix("delivery-locations", [
+        index("routes/admin-delivery-locations.tsx"),
+        route("new", "routes/admin-delivery-locations-new.tsx"),
+        route(":id/edit", "routes/admin-delivery-locations-$id-edit.tsx"),
+      ]),
       route("logout", "routes/admin-logout.tsx"),
     ]),
   ]),
