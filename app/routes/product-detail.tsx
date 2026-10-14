@@ -329,7 +329,7 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
       />
 
       <div className="bg-white">
-        <div className="mx-auto max-w-350 px-4 pb-28 pt-4 sm:px-6 lg:px-10 lg:pb-20 lg:pt-6">
+        <div className="mx-auto max-w-350 px-4 pb-36 pt-4 sm:px-6 lg:px-10 lg:pb-20 lg:pt-6">
           <nav className="mb-5 text-[13px] text-charcoal/45">
             <Link to="/shop" className="hover:text-charcoal">
               Shop
@@ -594,7 +594,10 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
                 </button>
               </div>
               <p className="mt-3 text-center text-[12px] text-charcoal/45">
-                Duties and taxes applied at checkout
+                HST applied at checkout.{" "}
+                <Link to="/policies/returns" className="underline underline-offset-4 hover:text-navy">
+                  Free size exchange within 30 days.
+                </Link>
               </p>
 
               {related[0] && (
@@ -817,6 +820,11 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-40 bg-white/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(17,26,34,0.06)] lg:hidden">
+        <p className="mb-2 text-center text-[11px] text-charcoal/55">
+          <Link to="/policies/returns" className="underline underline-offset-4">
+            Free size exchange within 30 days.
+          </Link>
+        </p>
         <button
           type="button"
           onClick={handleAddToCart}

@@ -7,6 +7,9 @@ import { useCart } from "~/lib/cart";
 import { formatCurrency, cn } from "~/lib/utils";
 import { Button } from "~/components/ui/shadcn-button";
 import { tryDb } from "~/db.server";
+import { generateGiftCardCode } from "~/lib/commerce.server";
+import { sendGiftCardEmail } from "~/lib/email.server";
+import { deliverOrderConfirmation, recordPaidOrder } from "~/lib/paid-order.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   return {};
@@ -33,6 +36,12 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   if (!phase1 || !phase2) return data({ error: "Missing prior phase data" }, { status: 400 });
+  if (formData.get("agreePolicies") !== "on") {
+    return data(
+      { error: "Please agree to the Delivery, Returns, and Privacy policies." },
+      { status: 400 }
+    );
+  }
 
   const { subtotal = 0, discountAmount = 0, giftCardAmount = 0 } = phase1;
   const shippingCost = phase2.shippingCost ?? 0;
@@ -57,37 +66,130 @@ export async function action({ request }: Route.ActionArgs) {
           country: phase2.billingAddress?.country || "CA",
         };
 
-    await db.order.create({
-      data: {
-        orderNumber,
-        customerId: phase1.customerId ?? null,
-        email: phase1.email,
-        subtotal,
-        shipping: shippingCost,
-        tax,
-        total,
-        status: "paid",
-        shippingAddress: JSON.stringify(shippingAddress),
-        billingAddress: JSON.stringify(phase2.billingAddress || shippingAddress),
-        deliveryLocationId: phase2.deliveryLocationId || null,
-        deliveryTimeSlotId: phase2.deliveryTimeSlotId || null,
-        shippingCost,
-        shippingMethod: phase2.shippingMethod || null,
-        items: {
-          create: cartItems.map((item: any) => ({
-            lineType: item.kind === "product" ? "product" : "gift_card",
-            productVariantId: item.variantId || undefined,
-            quantity: item.quantity,
-            priceAtPurchase: item.price,
-            productName: item.productName || "Gift Card",
-            variantLabel: item.variantLabel || undefined,
-          })),
-        },
-        stripePaymentIntentId: `pi_mock_${Date.now()}`,
-      },
+    const { order } = await recordPaidOrder(db, {
+      orderNumber,
+      email: phase1.email,
+      customerId: phase1.customerId ?? null,
+      subtotal,
+      shipping: shippingCost,
+      tax,
+      total,
+      stripePaymentIntentId: `pi_mock_${Date.now()}`,
+      shippingAddress,
+      billingAddress: phase2.billingAddress || shippingAddress,
+      deliveryLocationId: phase2.deliveryLocationId,
+      deliveryTimeSlotId: phase2.deliveryTimeSlotId,
+      shippingMethod: phase2.shippingMethod,
+      shippingCost,
+      items: cartItems.map((item: CartItem) => ({
+        kind: item.kind === "gift_card" ? "gift_card" : "product",
+        variantId: item.kind === "gift_card" ? null : item.variantId,
+        quantity: item.quantity,
+        price: item.giftAmount ?? item.price,
+        productName: item.productName || "Gift Card",
+        variantLabel: item.variantLabel || "",
+      })),
     });
 
-    return redirect(`/checkout/success?session_id=${orderNumber}`);
+    try {
+    if (phase1.giftCardCode && giftCardAmount > 0) {
+      const card = await db.giftCard.findUnique({
+        where: { code: String(phase1.giftCardCode).trim().toUpperCase() },
+      });
+      if (card) {
+        await db.giftCard.update({
+          where: { id: card.id },
+          data: { balance: Math.max(0, Number(card.balance) - giftCardAmount) },
+        });
+      }
+    }
+
+    if (phase1.promoCode) {
+      await db.discountCode.updateMany({
+        where: { code: String(phase1.promoCode).trim().toUpperCase() },
+        data: { usedCount: { increment: 1 } },
+      });
+    }
+
+    const hasProducts = cartItems.some((item: CartItem) => item.kind !== "gift_card");
+    if (phase1.email && hasProducts) {
+      const points = Math.max(0, Math.floor(subtotal));
+      const customer = phase1.customerId
+        ? await db.customer.findUnique({ where: { id: phase1.customerId } })
+        : await db.customer.findUnique({ where: { email: String(phase1.email) } });
+      if (customer && points > 0) {
+        await db.customer.update({
+          where: { id: customer.id },
+          data: { loyaltyPoints: { increment: points } },
+        });
+        await db.loyaltyLedger.create({
+          data: {
+            customerId: customer.id,
+            points,
+            reason: `Order ${order.orderNumber}`,
+            orderId: order.id,
+          },
+        });
+      }
+    }
+
+    for (const item of cartItems as CartItem[]) {
+      if (item.kind !== "gift_card") continue;
+      const amount = item.giftAmount ?? item.price;
+      for (let i = 0; i < item.quantity; i++) {
+        const code = generateGiftCardCode();
+        await db.giftCard.create({
+          data: {
+            code,
+            initialAmount: amount,
+            balance: amount,
+            purchaserEmail: phase1.email || null,
+            recipientEmail: item.recipientEmail ?? null,
+            note: item.giftNote ?? null,
+            source: "purchase",
+            orderId: order.id,
+          },
+        });
+        if (item.recipientEmail) {
+          try {
+            await sendGiftCardEmail({
+              to: item.recipientEmail,
+              code,
+              amount: formatCurrency(amount),
+              note: item.giftNote,
+              isRecipient: true,
+            });
+          } catch (error) {
+            console.error("Gift card email failed:", error);
+          }
+        }
+      }
+    }
+
+    if (formData.get("marketingOptIn") === "on") {
+      try {
+        if (phase1.customerId) {
+          await db.customer.update({
+            where: { id: phase1.customerId },
+            data: { marketingOptIn: true },
+          });
+        } else if (phase1.email) {
+          await db.customer.updateMany({
+            where: { email: String(phase1.email) },
+            data: { marketingOptIn: true },
+          });
+        }
+      } catch (error) {
+        console.error("Marketing opt-in update failed:", error);
+      }
+    }
+
+      await deliverOrderConfirmation(db, order.id);
+    } catch (error) {
+      console.error("Order follow-up failed:", error);
+    }
+
+    return redirect(`/checkout/success?session_id=${order.orderNumber}`);
   } catch (error) {
     console.error("Order creation error:", error);
     return data({ error: "Failed to place order. Please try again." }, { status: 500 });
@@ -134,13 +236,19 @@ export default function CheckoutPhase3() {
   const clearCart = useCart((s) => s.clearCart);
   const [isPlacing, setIsPlacing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [agreed, setAgreed] = useState(false);
+  const [newsOptIn, setNewsOptIn] = useState(false);
 
   const merchandise = Math.max(0, subtotal - discountAmount - giftCardAmount);
   const tax = Math.round((merchandise + shippingCost) * 0.13 * 100) / 100;
   const total = Math.max(0, merchandise + shippingCost + tax);
 
-  const handlePlaceOrder = async () => {
+    const handlePlaceOrder = async () => {
     if (!phase1 || !phase2) return;
+    if (!agreed) {
+      setError("Please agree to the Delivery, Returns, and Privacy policies.");
+      return;
+    }
     setIsPlacing(true);
     setError(null);
 
@@ -149,6 +257,8 @@ export default function CheckoutPhase3() {
     formData.append("phase1", JSON.stringify(phase1));
     formData.append("phase2", JSON.stringify(phase2));
     formData.append("cartItems", JSON.stringify(lineItems));
+    formData.append("agreePolicies", "on");
+    if (newsOptIn) formData.append("marketingOptIn", "on");
 
     try {
       const response = await fetch("/checkout/payment", { method: "POST", body: formData });
@@ -281,6 +391,30 @@ export default function CheckoutPhase3() {
           </div>
         )}
 
+        <label className="flex items-start gap-3 text-sm text-[#444]">
+          <input
+            type="checkbox"
+            checked={agreed}
+            onChange={(event) => setAgreed(event.target.checked)}
+            className="mt-1 rounded border-[#d1ccc3]"
+          />
+          <span>
+            I agree to the{" "}
+            <Link to="/policies/shipping" className="underline hover:text-[#1b2a4a]">Delivery</Link>,{" "}
+            <Link to="/policies/returns" className="underline hover:text-[#1b2a4a]">Returns</Link>, and{" "}
+            <Link to="/policies/privacy" className="underline hover:text-[#1b2a4a]">Privacy</Link> policies.
+          </span>
+        </label>
+        <label className="flex items-start gap-3 text-sm text-[#444]">
+          <input
+            type="checkbox"
+            checked={newsOptIn}
+            onChange={(event) => setNewsOptIn(event.target.checked)}
+            className="mt-1 rounded border-[#d1ccc3]"
+          />
+          <span>Email me news and launches. You can unsubscribe any time.</span>
+        </label>
+
         {/* Navigation */}
         <div className="flex gap-3">
           <Button
@@ -296,7 +430,7 @@ export default function CheckoutPhase3() {
           <Button
             type="button"
             onClick={handlePlaceOrder}
-            disabled={isPlacing}
+            disabled={isPlacing || !agreed}
             className="flex-1 h-14 rounded-2xl bg-[#1b2a4a] hover:bg-[#2a3d6a] text-white text-base font-semibold transition-all disabled:opacity-50"
           >
             {isPlacing ? (
@@ -321,11 +455,6 @@ export default function CheckoutPhase3() {
           </Button>
         </div>
 
-        <p className="text-center text-xs text-[#aaa]">
-          By placing your order you agree to our{" "}
-          <Link to="/policies/terms" className="underline hover:text-[#555]">Terms</Link> and{" "}
-          <Link to="/policies/privacy" className="underline hover:text-[#555]">Privacy Policy</Link>.
-        </p>
       </div>
 
       {/* ── Right: Final Order Summary ── */}
@@ -361,8 +490,8 @@ export default function CheckoutPhase3() {
         <div className="rounded-2xl border border-[#e5e0d8] bg-white px-5 py-4 space-y-3">
           {[
             { icon: "🔒", text: "256-bit SSL encryption" },
-            { icon: "📋", text: "30-day hassle-free returns" },
-            { icon: "🚀", text: "Fast, reliable delivery" },
+            { icon: "📋", text: "Free size exchange within 30 days" },
+            { icon: "🚀", text: "Free Shift Drop at your hospital" },
             { icon: "💬", text: "24/7 customer support" },
           ].map((item) => (
             <div key={item.text} className="flex items-center gap-2.5 text-xs text-[#666]">

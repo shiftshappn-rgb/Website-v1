@@ -3,10 +3,8 @@ import type Stripe from "stripe";
 import type { Route } from "./+types/api-webhook";
 import { tryDb } from "~/db.server";
 import { generateGiftCardCode } from "~/lib/commerce.server";
-import {
-  sendGiftCardEmail,
-  sendOrderConfirmationEmail,
-} from "~/lib/email.server";
+import { sendGiftCardEmail } from "~/lib/email.server";
+import { deliverOrderConfirmation, recordPaidOrder } from "~/lib/paid-order.server";
 import { getStripe } from "~/lib/stripe.server";
 import { formatCurrency, generateOrderNumber } from "~/lib/utils";
 
@@ -149,49 +147,42 @@ async function handleCheckoutCompleted(
   const tax = parseFloat(metadata.tax ?? "0");
   const total = parseFloat(metadata.total ?? "0");
 
-  const order = await db.order.create({
-    data: {
-      orderNumber: generateOrderNumber(),
-      email,
-      subtotal,
-      shipping,
-      tax,
-      total,
-      currency: "CAD",
-      stripeSessionId: session.id,
-      stripePaymentIntentId:
-        typeof session.payment_intent === "string"
-          ? session.payment_intent
-          : session.payment_intent?.id,
-      status: "paid",
-      shippingAddress,
-      items: {
-        create: lineItems.map((item) => {
-          if (item.kind === "gift_card") {
-            return {
-              lineType: "gift_card",
-              quantity: item.quantity,
-              priceAtPurchase: item.amount,
-              productName: "ShiftsHappn e-gift card",
-              variantLabel: item.recipientEmail
-                ? `Digital · $${item.amount} · to ${item.recipientEmail}`
-                : `Digital · $${item.amount}`,
-            };
-          }
-
-          return {
-            lineType: "product",
-            productVariantId: item.variantId,
+  const recorded = await recordPaidOrder(db, {
+    orderNumber: generateOrderNumber(),
+    email,
+    subtotal,
+    shipping,
+    tax,
+    total,
+    stripeSessionId: session.id,
+    stripePaymentIntentId:
+      typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : session.payment_intent?.id,
+    shippingAddress,
+    items: lineItems.map((item) =>
+      item.kind === "gift_card"
+        ? {
+            kind: "gift_card" as const,
             quantity: item.quantity,
-            priceAtPurchase: item.price,
+            price: item.amount,
+            productName: "ShiftsHappn e-gift card",
+            variantLabel: item.recipientEmail
+              ? `Digital · $${item.amount} · to ${item.recipientEmail}`
+              : `Digital · $${item.amount}`,
+          }
+        : {
+            kind: "product" as const,
+            variantId: item.variantId,
+            quantity: item.quantity,
+            price: item.price,
             productName: item.productName,
             variantLabel: item.variantLabel,
-          };
-        }),
-      },
-    },
-    include: { items: true },
+          }
+    ),
   });
+  if (recorded.alreadyExisted) return;
+  const order = recorded.order;
 
   const issuedCodes: Array<{
     code: string;
@@ -201,13 +192,7 @@ async function handleCheckoutCompleted(
   }> = [];
 
   for (const item of lineItems) {
-    if (item.kind === "product") {
-      await db.productVariant.update({
-        where: { id: item.variantId },
-        data: { inventoryQty: { decrement: item.quantity } },
-      });
-      continue;
-    }
+    if (item.kind === "product") continue;
 
     for (let i = 0; i < item.quantity; i++) {
       const code = generateGiftCardCode();
@@ -273,19 +258,7 @@ async function handleCheckoutCompleted(
   }
 
   if (email) {
-    await sendOrderConfirmationEmail({
-      to: email,
-      orderNumber: order.orderNumber,
-      total: formatCurrency(total),
-      items: order.items.map((item) => ({
-        name:
-          item.lineType === "gift_card"
-            ? item.productName
-            : `${item.productName} (${item.variantLabel})`,
-        quantity: item.quantity,
-        price: formatCurrency(Number(item.priceAtPurchase) * item.quantity),
-      })),
-    });
+    await deliverOrderConfirmation(db, order.id);
   }
 
   for (const issued of issuedCodes) {

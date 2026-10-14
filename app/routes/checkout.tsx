@@ -149,7 +149,7 @@ export async function action({ request }: Route.ActionArgs) {
   const giftCardCodeRaw = String(formData.get("giftCardCode") ?? "").trim().toUpperCase();
 
   let discountAmount = 0;
-  let shipping = hasProducts ? (subtotal >= 100 ? 0 : 9.95) : 0;
+  let shipping = 0;
   const originalShipping = shipping;
 
   if (discountCodeRaw) {
@@ -376,8 +376,7 @@ function CheckoutForm() {
   const discountAmount = 0;
   const giftCardAmount = 0;
   const subtotal = typedCartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const hasProducts = typedCartItems.some((item) => (item.kind ?? "product") === "product");
-  const shipping = hasProducts && subtotal >= 100 ? 0 : hasProducts ? 9.95 : 0;
+  const shipping = 0;
   const merchandise = Math.max(0, subtotal - discountAmount);
   const tax = Math.round((merchandise + shipping - giftCardAmount) * 0.13 * 100) / 100;
   const total = Math.max(0, merchandise + shipping - giftCardAmount + tax);

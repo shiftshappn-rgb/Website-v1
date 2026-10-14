@@ -315,7 +315,8 @@ model Order {
   total                 Decimal     @db.Decimal(10, 2)
   currency              String      @default("CAD")
   stripePaymentIntentId String?
-  stripeSessionId       String?
+  stripeSessionId       String?     @unique
+  confirmationSentAt    DateTime?
   status                OrderStatus @default(pending)
   shippingAddress       Json
   billingAddress        Json?
@@ -475,6 +476,8 @@ model LoyaltyLedger {
 model CommunityPost {
   id         String       @id @default(cuid())
   authorName String
+  role       String?
+  workplace  String?
   title      String
   body       String       @db.Text
   image      String?

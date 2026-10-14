@@ -111,9 +111,10 @@ export default function CheckoutLayout() {
         <footer className="border-t border-[#e5e0d8] mt-16 py-6">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-wrap items-center justify-center gap-6 text-xs text-[#aaa]">
             <span>© {new Date().getFullYear()} shiftshappn</span>
+            <Link to="/policies/shipping" className="hover:text-[#555]">Delivery</Link>
+            <Link to="/policies/returns" className="hover:text-[#555]">Returns</Link>
             <Link to="/policies/privacy" className="hover:text-[#555]">Privacy</Link>
             <Link to="/policies/terms" className="hover:text-[#555]">Terms</Link>
-            <Link to="/policies/returns" className="hover:text-[#555]">Returns</Link>
           </div>
         </footer>
       </div>

@@ -28,8 +28,8 @@ export default function About({}: Route.ComponentProps) {
         <h2>Made for Canadians</h2>
         <p>
           From our headquarters to your hospital, we're proud to serve healthcare
-          professionals across Canada. Free shipping on orders over $100 CAD and
-          hassle-free 14-day returns, because we stand behind every stitch.
+          professionals in Halifax. Shift Drop is free, and unworn items can be
+          exchanged within 30 days.
         </p>
         <h2>Sustainability</h2>
         <p>

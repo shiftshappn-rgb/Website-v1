@@ -15,7 +15,7 @@ const navLinks = [
 export function AnnouncementBar() {
   return (
     <div className="bg-navy px-2 py-2 text-center text-xs leading-snug tracking-wide text-white sm:whitespace-nowrap sm:px-4">
-      free shipping over $100 CAD — free 14-day returns
+      free Shift Drop in Halifax — free size exchange within 30 days
     </div>
   );
 }
@@ -225,6 +225,15 @@ export function Footer() {
             </Link>
             <Link to="/contact" prefetch="intent" className="hover:text-sky transition-colors">
               Contact
+            </Link>
+            <Link to="/policies/shipping" prefetch="intent" className="hover:text-sky transition-colors">
+              Delivery
+            </Link>
+            <Link to="/policies/returns" prefetch="intent" className="hover:text-sky transition-colors">
+              Returns
+            </Link>
+            <Link to="/policies/privacy" prefetch="intent" className="hover:text-sky transition-colors">
+              Privacy
             </Link>
           </div>
           <div className="flex items-center gap-6 text-sm">
