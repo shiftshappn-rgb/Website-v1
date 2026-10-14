@@ -12,12 +12,28 @@ export function meta({}: Route.MetaArgs) {
 
 const faqs = [
   {
-    q: "What is your shipping policy?",
-    a: "We offer free standard shipping on all orders over $100 CAD within Canada. Orders under $100 are shipped at a flat rate of $9.95. Most orders arrive within 3–7 business days.",
+    q: "How does delivery work?",
+    a: (
+      <>
+        Shift Drop is free, in person, at the Halifax hospital site and time window you choose at checkout. We do not mail orders.{" "}
+        <Link to="/policies/shipping" className="text-navy underline underline-offset-4 hover:text-terracotta">
+          Delivery policy
+        </Link>
+        .
+      </>
+    ),
   },
   {
     q: "What is your return policy?",
-    a: "We offer free 14-day returns on unworn items with original tags attached. Simply initiate a return from your account or contact our support team.",
+    a: (
+      <>
+        Unworn items can be exchanged for another size or refunded within 30 days of pickup.{" "}
+        <Link to="/policies/returns" className="text-navy underline underline-offset-4 hover:text-terracotta">
+          Returns policy
+        </Link>
+        .
+      </>
+    ),
   },
   {
     q: "How do I find my size?",
@@ -28,8 +44,8 @@ const faqs = [
     a: "Select fabric lines include antimicrobial properties. Check individual product pages for fabric details, or browse our shop by fabric section.",
   },
   {
-    q: "Do you ship internationally?",
-    a: "Currently we ship within Canada only. We're working on expanding to the US — sign up for our newsletter to be notified.",
+    q: "Do you deliver outside Halifax?",
+    a: "Shift Drop currently covers hospital sites in the Halifax Regional Municipality only. Email us if you want a drop somewhere else.",
   },
   {
     q: "How do I care for my scrubs?",
@@ -57,7 +73,7 @@ export default function Faq({}: Route.ComponentProps) {
               {faq.q}
               <span className="ml-4 text-charcoal/50 group-open:rotate-180 transition-transform">▼</span>
             </summary>
-            <p className="pb-4 text-sm text-charcoal/80 leading-relaxed">{faq.a}</p>
+            <div className="pb-4 text-sm text-charcoal/80 leading-relaxed">{faq.a}</div>
           </details>
         ))}
       </div>

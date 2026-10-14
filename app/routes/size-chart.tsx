@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import type { Route } from "./+types/size-chart";
 import { SizeChartTables } from "~/components/storefront/SizeChartTables";
 import { buildMeta } from "~/lib/seo";
@@ -15,9 +16,14 @@ export default function SizeChart({}: Route.ComponentProps) {
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
       <h1 className="mb-2 font-serif text-3xl text-navy lg:text-4xl">Size chart</h1>
-      <p className="mb-10 text-charcoal/70">
+      <p className="mb-3 text-charcoal/70">
         All measurements are in inches. If you are between sizes, we recommend sizing up
         for a more relaxed fit. Inseams are the same across sizes and vary by pant style.
+      </p>
+      <p className="mb-10 text-sm text-charcoal/70">
+        <Link to="/policies/returns" className="text-navy underline underline-offset-4 hover:text-terracotta">
+          Free size exchange within 30 days.
+        </Link>
       </p>
 
       <SizeChartTables />

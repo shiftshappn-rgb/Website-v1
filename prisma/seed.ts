@@ -9,6 +9,7 @@ import {
   CATALOG_COLORS,
   CATALOG_SIZES,
 } from "../app/lib/product-catalog";
+import { STORE_POLICIES } from "../app/lib/store-policies";
 import { slugify } from "../app/lib/utils";
 
 neonConfig.webSocketConstructor = ws;
@@ -419,20 +420,23 @@ async function main() {
     },
   });
 
-  const policies = [
-    { slug: "shipping", title: "Shipping Policy", content: "<p>Free shipping on orders over $100 CAD within Canada.</p>" },
-    { slug: "returns", title: "Returns & Exchanges", content: "<p>Free 14-day returns on unworn items with tags attached.</p>" },
-    { slug: "privacy", title: "Privacy Policy", content: "<p>We respect your privacy and protect your personal information.</p>" },
-    { slug: "terms", title: "Terms of Service", content: "<p>By using shiftshappn.com you agree to these terms.</p>" },
-  ];
-
-  for (const policy of policies) {
+  for (const policy of STORE_POLICIES) {
     await db.policyPage.upsert({
       where: { slug: policy.slug },
-      update: {},
+      update: { title: policy.title, content: policy.content },
       create: policy,
     });
   }
+
+  await db.policyPage.upsert({
+    where: { slug: "terms" },
+    update: {},
+    create: {
+      slug: "terms",
+      title: "Terms of Service",
+      content: "<p>By using shiftshappn.com you agree to these terms.</p>",
+    },
+  });
 
   await db.siteSetting.upsert({
     where: { key: "low_stock_threshold" },

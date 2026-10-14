@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Link } from "react-router";
 import { X } from "lucide-react";
 import { SizeChartTables } from "~/components/storefront/SizeChartTables";
 
@@ -53,9 +54,18 @@ export function SizeChartDrawer({
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-6">
-          <p className="mb-6 text-sm text-charcoal/70">
+          <p className="mb-2 text-sm text-charcoal/70">
             All measurements are in inches. Inseams stay the same across sizes and change
             by pant style: Jogger, Straight, and Tall.
+          </p>
+          <p className="mb-6 text-sm text-charcoal/70">
+            <Link
+              to="/policies/returns"
+              onClick={onClose}
+              className="text-navy underline underline-offset-4 hover:text-terracotta"
+            >
+              Free size exchange within 30 days.
+            </Link>
           </p>
           <SizeChartTables />
           <div className="space-y-3 text-sm text-charcoal/80">

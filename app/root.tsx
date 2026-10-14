@@ -28,7 +28,7 @@ export function meta(): Route.MetaDescriptors {
     {
       name: "description",
       content:
-        "Soft, stretch scrubs with pockets that actually hold what you carry. Canadian made. Free shipping over $100 CAD.",
+        "Soft, stretch scrubs with pockets that actually hold what you carry. Canadian made. Free Shift Drop in Halifax.",
     },
   ];
 }

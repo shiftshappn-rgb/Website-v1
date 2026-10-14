@@ -270,7 +270,9 @@ export default function CheckoutPhase2() {
       billingAddress: billingAddress as any,
       deliveryLocationName: isOther ? "Custom Address" : selectedLocation?.name ?? "Custom Address",
       deliveryLocationType: isOther ? "other" : selectedLocation?.type ?? "other",
-      deliveryTimeSlotLabel: selectedSlot?.label,
+      deliveryTimeSlotLabel: selectedSlot
+        ? `${selectedSlot.label} (${formatTimeRange(selectedSlot.startTime, selectedSlot.endTime)})`
+        : undefined,
     });
 
     navigate("/checkout/payment");
