@@ -97,7 +97,14 @@ export async function action({ request }: Route.ActionArgs) {
       include: { product: true },
     });
 
-    if (!variant || variant.product.status !== "active") {
+    const inSet =
+      variant?.product.status === "archived"
+        ? await db.bundleProduct.findFirst({
+            where: { productId: variant.productId },
+            select: { productId: true },
+          })
+        : null;
+    if (!variant || (variant.product.status !== "active" && !inSet)) {
       return data({ error: `Product unavailable: ${item.productName}` }, { status: 400 });
     }
 

@@ -14,6 +14,9 @@ export type CartItem = {
   quantity: number;
   imagePublicId?: string;
   imageAlt?: string;
+  setGroupId?: string;
+  setRole?: "top" | "pants";
+  packGroupId?: string;
   giftAmount?: number;
   recipientEmail?: string;
   giftNote?: string;
@@ -23,14 +26,21 @@ type CartState = {
   items: CartItem[];
   isOpen: boolean;
   addItem: (item: Omit<CartItem, "quantity"> & { quantity?: number }) => void;
+  addSet: (lines: Array<Omit<CartItem, "quantity"> & { quantity?: number }>) => void;
+  addPack: (lines: Array<Omit<CartItem, "quantity"> & { quantity?: number }>) => void;
   addGiftCard: (item: {
     amount: number;
     recipientEmail?: string;
     giftNote?: string;
     quantity?: number;
   }) => void;
-  removeItem: (variantId: string) => void;
-  updateQuantity: (variantId: string, quantity: number) => void;
+  removeItem: (variantId: string, setGroupId?: string, packGroupId?: string) => void;
+  updateQuantity: (
+    variantId: string,
+    quantity: number,
+    setGroupId?: string,
+    packGroupId?: string
+  ) => void;
   clearCart: () => void;
   openCart: () => void;
   closeCart: () => void;
@@ -64,12 +74,17 @@ export const useCart = create<CartState>()(
             kind: item.kind ?? "product",
           });
           const existing = state.items.find(
-            (i) => i.variantId === normalized.variantId
+            (i) =>
+              !i.setGroupId &&
+              !i.packGroupId &&
+              !normalized.setGroupId &&
+              !normalized.packGroupId &&
+              i.variantId === normalized.variantId
           );
           if (existing) {
             return {
               items: state.items.map((i) =>
-                i.variantId === normalized.variantId
+                !i.setGroupId && !i.packGroupId && i.variantId === normalized.variantId
                   ? { ...i, quantity: i.quantity + (item.quantity ?? 1) }
                   : i
               ),
@@ -108,21 +123,95 @@ export const useCart = create<CartState>()(
         });
       },
 
-      removeItem: (variantId) => {
+      addSet: (lines) => {
+        const groupId = lines[0]?.setGroupId;
+        if (!groupId || lines.length < 2) return;
+        const added = lines[0].quantity ?? 1;
+        set((state) => {
+          const existing = state.items.some(
+            (item) => item.setGroupId === groupId && !item.packGroupId
+          );
+          if (existing) {
+            return {
+              items: state.items.map((item) =>
+                item.setGroupId === groupId && !item.packGroupId
+                  ? { ...item, quantity: item.quantity + added }
+                  : item
+              ),
+              isOpen: true,
+            };
+          }
+          return {
+            items: [
+              ...state.items,
+              ...lines.map((line) => ({
+                ...normalizeItem(line),
+                quantity: line.quantity ?? 1,
+              })),
+            ],
+            isOpen: true,
+          };
+        });
+      },
+
+      addPack: (lines) => {
+        const groupId = lines[0]?.packGroupId;
+        if (!groupId || lines.length < 2) return;
+        const added = lines[0].quantity ?? 1;
+        set((state) => {
+          const existing = state.items.some((item) => item.packGroupId === groupId);
+          if (existing) {
+            return {
+              items: state.items.map((item) =>
+                item.packGroupId === groupId
+                  ? { ...item, quantity: item.quantity + added }
+                  : item
+              ),
+              isOpen: true,
+            };
+          }
+          return {
+            items: [
+              ...state.items,
+              ...lines.map((line) => ({
+                ...normalizeItem(line),
+                quantity: line.quantity ?? 1,
+              })),
+            ],
+            isOpen: true,
+          };
+        });
+      },
+
+      removeItem: (variantId, setGroupId, packGroupId) => {
         set((state) => ({
-          items: state.items.filter((i) => i.variantId !== variantId),
+          items: state.items.filter((item) => {
+            if (packGroupId) return item.packGroupId !== packGroupId;
+            if (setGroupId) return Boolean(item.packGroupId) || item.setGroupId !== setGroupId;
+            return Boolean(item.packGroupId) || Boolean(item.setGroupId) || item.variantId !== variantId;
+          }),
         }));
       },
 
-      updateQuantity: (variantId, quantity) => {
+      updateQuantity: (variantId, quantity, setGroupId, packGroupId) => {
         if (quantity <= 0) {
-          get().removeItem(variantId);
+          get().removeItem(variantId, setGroupId, packGroupId);
           return;
         }
         set((state) => ({
-          items: state.items.map((i) =>
-            i.variantId === variantId ? { ...i, quantity } : i
-          ),
+          items: state.items.map((item) => {
+            if (packGroupId) {
+              return item.packGroupId === packGroupId ? { ...item, quantity } : item;
+            }
+            if (setGroupId) {
+              return !item.packGroupId && item.setGroupId === setGroupId
+                ? { ...item, quantity }
+                : item;
+            }
+            return !item.setGroupId && !item.packGroupId && item.variantId === variantId
+              ? { ...item, quantity }
+              : item;
+          }),
         }));
       },
 

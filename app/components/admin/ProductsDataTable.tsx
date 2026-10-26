@@ -27,6 +27,7 @@ export type ProductTableItem = {
   status: ProductStatus;
   basePrice: number;
   categoryName: string | null;
+  audience: "Women" | "Men" | null;
   variantCount: number;
   thumbnailPublicId: string | null;
   thumbnailAlt: string;
@@ -41,9 +42,14 @@ const statusLabel: Record<ProductStatus, string> = {
 };
 
 const multiColumnFilterFn: FilterFn<ProductTableItem> = (row, _columnId, filterValue) => {
-  const searchableRowContent = `${row.original.name} ${row.original.slug}`.toLowerCase();
-  const searchTerm = (filterValue ?? "").toLowerCase();
-  return searchableRowContent.includes(searchTerm);
+  const searchTerm = String(filterValue ?? "").toLowerCase();
+  if (!searchTerm) return true;
+  const { name, slug, audience } = row.original;
+  return (
+    name.toLowerCase().includes(searchTerm) ||
+    slug.toLowerCase().includes(searchTerm) ||
+    audience?.toLowerCase() === searchTerm
+  );
 };
 
 const statusFilterFn: FilterFn<ProductTableItem> = (row, columnId, filterValue: string[]) => {
@@ -136,6 +142,16 @@ export function ProductsDataTable({
         enableHiding: false,
       },
       {
+        header: "For",
+        accessorKey: "audience",
+        cell: ({ row }) => {
+          const audience = row.original.audience;
+          if (!audience) return <span className="text-muted-foreground">—</span>;
+          return <Badge variant="secondary">{audience}</Badge>;
+        },
+        size: 100,
+      },
+      {
         header: "Status",
         accessorKey: "status",
         cell: ({ row }) => {
@@ -218,7 +234,7 @@ export function ProductsDataTable({
         columns={columns}
         getRowId={(row) => row.id}
         searchColumnId="name"
-        searchPlaceholder="Filter by name or slug..."
+        searchPlaceholder="Filter by name, slug, or Women / Men..."
         facetColumnId="status"
         facetLabel="Status"
         facetLabels={statusLabel}

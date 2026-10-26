@@ -1,4 +1,5 @@
 import { Link } from "react-router";
+import { CardImageCarousel } from "~/components/storefront/CardImageCarousel";
 import { formatCurrency } from "~/lib/utils";
 import type { ProductCardData } from "~/lib/serialize";
 
@@ -6,35 +7,6 @@ type ProductCardProps = {
   product: ProductCardData;
   cloudName?: string;
 };
-
-function ProductImage({
-  publicId,
-  alt,
-  cloudName,
-}: {
-  publicId?: string;
-  alt: string;
-  cloudName?: string;
-}) {
-  const src = publicId
-    ? publicId.startsWith("http")
-      ? publicId
-      : `https://res.cloudinary.com/${cloudName ?? "demo"}/image/upload/f_auto,q_auto,w_600/${publicId}`
-    : null;
-
-  if (!src) {
-    return <div className="aspect-[3/4] w-full bg-stone rounded-xl" />;
-  }
-
-  return (
-    <img
-      src={src}
-      alt={alt}
-      loading="lazy"
-      className="aspect-[3/4] w-full object-cover rounded-xl transition-opacity group-hover:opacity-90"
-    />
-  );
-}
 
 function ColorSwatches({
   slug,
@@ -50,7 +22,7 @@ function ColorSwatches({
       {colors.slice(0, 5).map((color) => (
         <Link
           key={color.name}
-          to={`/products/${slug}?color=${encodeURIComponent(color.name)}`}
+          to={`${slug.startsWith("/") ? slug : `/products/${slug}`}?color=${encodeURIComponent(color.name)}`}
           prefetch="intent"
           title={color.name}
           aria-label={`View ${color.name}`}
@@ -69,21 +41,30 @@ export function ProductCard({ product, cloudName }: ProductCardProps) {
   const price = Number(product.basePrice);
   const compareAt = product.compareAtPrice != null ? Number(product.compareAtPrice) : null;
   const colors = product.colors ?? [];
+  const href = product.href ?? `/products/${product.slug}`;
 
   return (
     <article className="group">
-      <Link to={`/products/${product.slug}`} prefetch="intent" className="block">
-        <ProductImage
-          publicId={product.imagePublicId}
-          alt={product.imageAlt ?? product.name}
-          cloudName={cloudName}
-        />
+      <CardImageCarousel
+        images={
+          product.images?.length
+            ? product.images
+            : product.imagePublicId
+              ? [{ publicId: product.imagePublicId, alt: product.imageAlt ?? product.name }]
+              : []
+        }
+        alt={product.imageAlt ?? product.name}
+        href={href}
+        cloudName={cloudName}
+        imageClassName="transition-opacity group-hover:opacity-90"
+      />
+      <Link to={href} prefetch="intent" className="block">
         <h3 className="mt-3 text-sm font-medium text-charcoal transition-colors line-clamp-2 group-hover:text-navy">
           {product.name}
         </h3>
       </Link>
       <div className="mt-2 space-y-2">
-        <ColorSwatches slug={product.slug} colors={colors} />
+        <ColorSwatches slug={href} colors={colors} />
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-navy">
             {formatCurrency(price)}

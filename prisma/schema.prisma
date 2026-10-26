@@ -65,6 +65,16 @@ enum BundleDiscountType {
   fixed
 }
 
+enum BundlePieceRole {
+  top
+  pants
+}
+
+enum PackStatus {
+  draft
+  active
+}
+
 enum GiftCardStatus {
   active
   disabled
@@ -150,6 +160,7 @@ model Product {
   professions ProductProfession[]
   collections ProductCollection[]
   bundleItems BundleProduct[]
+  packItems   PackItem[]
 }
 
 model ProductVariant {
@@ -259,17 +270,47 @@ model Bundle {
   updatedAt     DateTime           @updatedAt
 
   products BundleProduct[]
+  packItems PackItem[]
 }
 
 model BundleProduct {
   bundleId  String
   productId String
-  sortOrder Int    @default(0)
+  role      BundlePieceRole
+  sortOrder Int             @default(0)
 
   bundle  Bundle  @relation(fields: [bundleId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@id([bundleId, productId])
+}
+
+model Pack {
+  id            String             @id @default(cuid())
+  name          String
+  slug          String             @unique
+  description   String?
+  discountType  BundleDiscountType @default(fixed)
+  discountValue Decimal            @default(0) @db.Decimal(10, 2)
+  status        PackStatus         @default(draft)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  items PackItem[]
+}
+
+model PackItem {
+  id        String @id @default(cuid())
+  packId    String
+  bundleId  String?
+  productId String?
+  sortOrder Int    @default(0)
+
+  pack    Pack     @relation(fields: [packId], references: [id], onDelete: Cascade)
+  bundle  Bundle?  @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([packId])
 }
 
 model Customer {

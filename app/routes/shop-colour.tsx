@@ -58,7 +58,7 @@ export default function ShopColour({ loaderData }: Route.ComponentProps) {
         </>
       ) : (
         <p className="text-center text-charcoal/50 py-12">
-          Choose a colour above to see products
+          Choose a colour above to see sets
         </p>
       )}
     </div>

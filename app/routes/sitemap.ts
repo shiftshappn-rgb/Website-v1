@@ -18,6 +18,8 @@ export async function loader({}: Route.LoaderArgs) {
     "/shop/men",
     "/shop/colour",
     "/shop/fabric",
+    "/shop/accessories",
+    "/shop/bundles",
     "/blog",
     "/about",
     "/faq",
@@ -30,8 +32,13 @@ export async function loader({}: Route.LoaderArgs) {
   if (isDatabaseAvailable()) {
     const db = tryDb();
     if (db) {
-      const [products, collections, posts] = await Promise.all([
+      const [products, sets, packs, collections, posts] = await Promise.all([
         db.product.findMany({
+          where: { status: "active" },
+          select: { slug: true, updatedAt: true },
+        }),
+        db.bundle.findMany({ select: { slug: true, updatedAt: true } }),
+        db.pack.findMany({
           where: { status: "active" },
           select: { slug: true, updatedAt: true },
         }),
@@ -45,6 +52,12 @@ export async function loader({}: Route.LoaderArgs) {
       dynamicUrls = [
         ...products.map((p) =>
           urlEntry(getCanonicalUrl(`/products/${p.slug}`), p.updatedAt.toISOString().split("T")[0], "weekly", "0.8")
+        ),
+        ...sets.map((set) =>
+          urlEntry(getCanonicalUrl(`/sets/${set.slug}`), set.updatedAt.toISOString().split("T")[0], "weekly", "0.8")
+        ),
+        ...packs.map((pack) =>
+          urlEntry(getCanonicalUrl(`/bundles/${pack.slug}`), pack.updatedAt.toISOString().split("T")[0], "weekly", "0.8")
         ),
         ...collections.map((c) =>
           urlEntry(getCanonicalUrl(`/collections/${c.slug}`), c.updatedAt.toISOString().split("T")[0], "weekly", "0.7")

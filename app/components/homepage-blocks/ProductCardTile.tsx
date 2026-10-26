@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { Link } from "react-router";
+import { CardImageCarousel } from "~/components/storefront/CardImageCarousel";
 import { formatCurrency } from "~/lib/utils";
-import { BlockImage } from "./BlockImage";
 import type { ProductSummary } from "./types";
 
 function ColorSwatches({
@@ -18,7 +18,7 @@ function ColorSwatches({
       {colors.slice(0, 5).map((color) => (
         <Link
           key={color.name}
-          to={`/products/${slug}?color=${encodeURIComponent(color.name)}`}
+          to={`${slug.startsWith("/") ? slug : `/products/${slug}`}?color=${encodeURIComponent(color.name)}`}
           prefetch="intent"
           title={color.name}
           aria-label={`View ${color.name}`}
@@ -44,27 +44,34 @@ export function ProductCardTile({
   className?: string;
   style?: CSSProperties;
 }) {
+  const href = product.href ?? `/products/${product.slug}`;
+
   return (
     <article className={`group ${className}`} style={style}>
-      <Link to={`/products/${product.slug}`} prefetch="intent" className="block">
-        <div className="relative mb-3 overflow-hidden rounded-xl bg-stone shadow-sm transition-shadow duration-300 group-hover:shadow-lg">
-          <BlockImage
-            publicId={product.imagePublicId}
-            alt={product.imageAlt ?? product.name}
-            width={500}
-            cloudName={cloudName}
-            className="aspect-3/4 w-full object-cover transition-transform duration-500 group-hover:scale-105 bg-stone"
-            placeholderClassName="aspect-3/4 w-full bg-stone"
-          />
-          <span className="pointer-events-none absolute inset-x-0 bottom-4 mx-auto w-fit rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-medium uppercase tracking-wider text-charcoal opacity-0 translate-y-2 transition-all duration-300 group-hover:opacity-100 group-hover:translate-y-0">
-            Quick view
-          </span>
-        </div>
+      <div className="relative mb-3 shadow-sm transition-shadow duration-300 group-hover:shadow-lg">
+        <CardImageCarousel
+          images={
+            product.images?.length
+              ? product.images
+              : product.imagePublicId
+                ? [{ publicId: product.imagePublicId, alt: product.imageAlt ?? product.name }]
+                : []
+          }
+          alt={product.imageAlt ?? product.name}
+          href={href}
+          cloudName={cloudName}
+          imageClassName="transition-transform duration-500 group-hover:scale-105"
+        />
+        <span className="pointer-events-none absolute inset-x-0 bottom-8 z-10 mx-auto w-fit rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-medium uppercase tracking-wider text-charcoal opacity-0 translate-y-2 transition-all duration-300 group-hover:opacity-100 group-hover:translate-y-0">
+          Quick view
+        </span>
+      </div>
+      <Link to={href} prefetch="intent" className="block">
         <h3 className="text-sm font-medium text-charcoal transition-colors group-hover:text-navy">
           {product.name}
         </h3>
       </Link>
-      <ColorSwatches slug={product.slug} colors={product.colors} />
+      <ColorSwatches slug={href} colors={product.colors} />
       <div className="mt-1.5 flex items-center gap-2">
         <span className="text-sm text-charcoal/80">
           {formatCurrency(Number(product.basePrice))}

@@ -9,7 +9,9 @@ import { cn } from "~/lib/utils";
 const navLinks = [
   { label: "Women", href: "/shop/women" },
   { label: "Men", href: "/shop/men" },
-  { label: "Bundles", href: "/collections/bundles" },
+  { label: "Sets", href: "/shop" },
+  { label: "Bundles", href: "/shop/bundles" },
+  { label: "Accessories", href: "/shop/accessories" },
 ];
 
 export function AnnouncementBar() {

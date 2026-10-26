@@ -85,7 +85,7 @@ export function CartDrawer() {
             items.map((item) => {
               const isGift = (item.kind ?? "product") === "gift_card";
               return (
-              <div key={item.variantId} className="flex gap-4">
+              <div key={`${item.packGroupId ?? item.setGroupId ?? "item"}-${item.variantId}`} className="flex gap-4">
                 <div className="w-20 h-24 bg-stone rounded-lg overflow-hidden flex-shrink-0">
                   {isGift ? (
                     <div className="flex h-full w-full flex-col items-center justify-center bg-sky/20 text-sky">
@@ -115,7 +115,7 @@ export function CartDrawer() {
                   <div className="mt-2 flex flex-wrap items-center gap-2 gap-y-2">
                     <button
                       onClick={() =>
-                        updateQuantity(item.variantId, item.quantity - 1)
+                        updateQuantity(item.variantId, item.quantity - 1, item.setGroupId, item.packGroupId)
                       }
                       className="flex min-h-10 min-w-10 items-center justify-center rounded border border-charcoal/20 p-2"
                       aria-label="Decrease quantity"
@@ -125,7 +125,7 @@ export function CartDrawer() {
                     <span className="w-8 text-center text-sm">{item.quantity}</span>
                     <button
                       onClick={() =>
-                        updateQuantity(item.variantId, item.quantity + 1)
+                        updateQuantity(item.variantId, item.quantity + 1, item.setGroupId, item.packGroupId)
                       }
                       className="flex min-h-10 min-w-10 items-center justify-center rounded border border-charcoal/20 p-2"
                       aria-label="Increase quantity"
@@ -133,7 +133,7 @@ export function CartDrawer() {
                       <Plus size={14} />
                     </button>
                     <button
-                      onClick={() => removeItem(item.variantId)}
+                      onClick={() => removeItem(item.variantId, item.setGroupId, item.packGroupId)}
                       className="ml-auto inline-flex min-h-10 items-center px-2 text-xs text-charcoal/50 hover:text-terracotta"
                     >
                       Remove
