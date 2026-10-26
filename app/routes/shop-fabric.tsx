@@ -45,7 +45,7 @@ export default function ShopFabric({ loaderData }: Route.ComponentProps) {
               <p className="mt-2 text-sm text-charcoal/70">{fabric.description}</p>
             )}
             <p className="mt-3 text-xs text-charcoal/50">
-              {fabric.productCount} product{fabric.productCount !== 1 ? "s" : ""}
+              {fabric.productCount} set{fabric.productCount !== 1 ? "s" : ""}
             </p>
           </Link>
         ))}
@@ -58,7 +58,7 @@ export default function ShopFabric({ loaderData }: Route.ComponentProps) {
         </>
       ) : (
         <p className="text-center text-charcoal/50 py-12">
-          Select a fabric type above to browse products
+          Select a fabric type above to browse sets
         </p>
       )}
     </div>

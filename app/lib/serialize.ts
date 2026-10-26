@@ -10,6 +10,8 @@ export type ProductCardData = {
   colors: Array<{ name: string; hex: string }>;
   imagePublicId?: string;
   imageAlt?: string;
+  images?: Array<{ publicId: string; alt: string }>;
+  href?: string;
 };
 
 export type SerializedVariant = {

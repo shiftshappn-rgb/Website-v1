@@ -58,6 +58,7 @@ export function productJsonLd(product: {
   name: string;
   description: string;
   slug: string;
+  path?: string;
   price: number;
   currency?: string;
   inStock: boolean;
@@ -70,7 +71,7 @@ export function productJsonLd(product: {
     "@type": "Product",
     name: product.name,
     description: product.description,
-    url: getCanonicalUrl(`/products/${product.slug}`),
+    url: getCanonicalUrl(product.path ?? `/products/${product.slug}`),
     image: product.image,
     offers: {
       "@type": "Offer",

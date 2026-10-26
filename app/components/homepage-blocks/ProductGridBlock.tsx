@@ -30,7 +30,13 @@ export function ProductGridBlock({
 
   return (
     <section ref={revealRef} className="section-white py-12 lg:py-16">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div
+        className={
+          layout === "carousel"
+            ? "mx-auto w-full max-w-[1800px] px-3 sm:px-5 lg:px-10"
+            : "mx-auto max-w-7xl px-4 sm:px-6 lg:px-8"
+        }
+      >
         <div className="flex items-end justify-between gap-4 mb-8 lg:mb-10">
           <h2 className="animate-on-scroll text-xl lg:text-2xl font-sans font-semibold text-charcoal">
             {content.headline}

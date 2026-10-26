@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Star } from "lucide-react";
+import { Star } from "lucide-react";
 import type { Route } from "./+types/product-detail";
 import { data, Link, useActionData, useSearchParams } from "react-router";
+import { ProductGallery } from "~/components/storefront/ProductGallery";
 import { ReviewForm } from "~/components/storefront/ReviewForm";
 import { SizeChartDrawer } from "~/components/storefront/SizeChartDrawer";
 import { isDatabaseAvailable, tryDb } from "~/db.server";
@@ -350,95 +351,14 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
           </nav>
 
           <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(20rem,28rem)] lg:gap-16">
-            <div className="lg:sticky lg:top-28 lg:h-[calc(100svh-8rem)]">
-              <div
-                className={cn(
-                  "grid h-full grid-cols-1 gap-3",
-                  images.length > 1 && "lg:grid-cols-[4.25rem_minmax(0,1fr)]"
-                )}
-              >
-                {images.length > 1 && (
-                  <div className="hidden h-full flex-col gap-2 overflow-y-auto lg:flex">
-                    {images.map((img, i) => (
-                      <button
-                        key={img.publicId + i}
-                        type="button"
-                        onClick={() => setActiveImage(i)}
-                        className={cn(
-                          "aspect-3/4 overflow-hidden border",
-                          activeImage === i ? "border-charcoal" : "border-transparent"
-                        )}
-                      >
-                        <img
-                          src={imageSrc(img.publicId, 160)}
-                          alt=""
-                          className="h-full w-full object-cover object-top"
-                        />
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                <div className="relative min-h-0 bg-[#f6f6f4] lg:h-full">
-                  <div className="aspect-3/4 lg:aspect-auto lg:h-full">
-                    {images[activeImage] ? (
-                      <img
-                        src={imageSrc(images[activeImage].publicId, 1200)}
-                        alt={images[activeImage].altText || product.name}
-                        className="h-full w-full object-contain object-center"
-                      />
-                    ) : (
-                      <div className="h-full w-full bg-[#f6f6f4]" />
-                    )}
-                  </div>
-                  {images.length > 1 && (
-                    <>
-                      <button
-                        type="button"
-                        className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-charcoal shadow-sm"
-                        onClick={() =>
-                          setActiveImage((i) => (i === 0 ? images.length - 1 : i - 1))
-                        }
-                        aria-label="Previous image"
-                      >
-                        <ChevronLeft size={18} />
-                      </button>
-                      <button
-                        type="button"
-                        className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-charcoal shadow-sm"
-                        onClick={() =>
-                          setActiveImage((i) => (i === images.length - 1 ? 0 : i + 1))
-                        }
-                        aria-label="Next image"
-                      >
-                        <ChevronRight size={18} />
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {images.length > 1 && (
-                <div className="mt-3 flex gap-2 overflow-x-auto lg:hidden">
-                  {images.map((img, i) => (
-                    <button
-                      key={img.publicId + i}
-                      type="button"
-                      onClick={() => setActiveImage(i)}
-                      className={cn(
-                        "h-16 w-12 shrink-0 overflow-hidden border",
-                        activeImage === i ? "border-charcoal" : "border-charcoal/10"
-                      )}
-                    >
-                      <img
-                        src={imageSrc(img.publicId, 120)}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    </button>
-                  ))}
-                </div>
-              )}
+            <div className="lg:sticky lg:top-28">
+              <ProductGallery
+                images={images}
+                activeIndex={activeImage}
+                onChange={setActiveImage}
+                alt={product.name}
+                imageSrc={imageSrc}
+              />
             </div>
 
             <div>

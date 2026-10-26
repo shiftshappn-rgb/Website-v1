@@ -145,7 +145,9 @@ export interface ProductSummary {
   compareAtPrice?: number | string | null;
   imagePublicId?: string;
   imageAlt?: string;
+  images?: Array<{ publicId: string; alt: string }>;
   colors?: ProductColorSwatch[];
+  href?: string;
 }
 
 export interface BlockCommonProps {

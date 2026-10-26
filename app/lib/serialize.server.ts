@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { getVariantPrice, parseVariantImages } from "~/lib/utils";
+import { collectCardImages, getVariantPrice, parseVariantImages } from "~/lib/utils";
 import type { ProductCardData } from "~/lib/serialize";
 
 export type { ProductCardData, SerializedProduct } from "~/lib/serialize";
@@ -91,16 +91,7 @@ export function serializeProductForCard(
     }
   }
 
-  let imagePublicId: string | undefined;
-  let imageAlt: string | undefined;
-  for (const v of product.variants) {
-    const images = parseVariantImages(v.images);
-    if (images.length > 0) {
-      imagePublicId = images[0].publicId;
-      imageAlt = images[0].altText;
-      break;
-    }
-  }
+  const images = collectCardImages([product.variants], product.name);
 
   return {
     id: product.id,
@@ -110,7 +101,8 @@ export function serializeProductForCard(
     basePrice: prices.length > 0 ? Math.min(...prices) : basePrice,
     compareAtPrice,
     colors,
-    imagePublicId,
-    imageAlt: imageAlt ?? product.name,
+    imagePublicId: images[0]?.publicId,
+    imageAlt: images[0]?.alt ?? product.name,
+    images,
   };
 }

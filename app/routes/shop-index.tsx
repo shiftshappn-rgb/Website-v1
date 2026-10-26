@@ -29,7 +29,7 @@ export default function ShopIndex({ loaderData }: Route.ComponentProps) {
       <header className="mb-2">
         <h1 className="text-3xl lg:text-4xl font-serif text-navy">Shop all</h1>
         <p className="mt-2 text-charcoal/70">
-          {products.length} {products.length === 1 ? "product" : "products"}
+          {products.length} {products.length === 1 ? "set" : "sets"}
         </p>
       </header>
       <ShopFilters

@@ -15,8 +15,12 @@ export default [
       route("men", "routes/shop-men.tsx"),
       route("colour", "routes/shop-colour.tsx"),
       route("fabric", "routes/shop-fabric.tsx"),
+      route("accessories", "routes/shop-accessories.tsx"),
+      route("bundles", "routes/shop-bundles.tsx"),
     ]),
     route("products/:slug", "routes/product-detail.tsx"),
+    route("sets/:slug", "routes/set-detail.tsx"),
+    route("bundles/:slug", "routes/bundle-detail.tsx"),
     route("collections/:slug", "routes/collection-detail.tsx"),
     ...prefix("blog", [
       index("routes/blog-index.tsx"),
@@ -60,6 +64,7 @@ export default [
     ".well-known/appspecific/com.chrome.devtools.json",
     "routes/chrome-devtools-well-known.ts"
   ),
+  route("json/*", "routes/devtools-json-probe.ts"),
   ...prefix("admin", [
     route("login", "routes/admin-login.tsx"),
     route("api/cloudinary-sign", "routes/api-admin-cloudinary-sign.ts"),
@@ -73,6 +78,7 @@ export default [
       route("categories", "routes/admin-categories.tsx"),
       route("colors", "routes/admin-colors.tsx"),
       route("collections", "routes/admin-collections.tsx"),
+      route("packs", "routes/admin-packs.tsx"),
       ...prefix("orders", [
         index("routes/admin-orders-index.tsx"),
         route(":id", "routes/admin-orders-detail.tsx"),

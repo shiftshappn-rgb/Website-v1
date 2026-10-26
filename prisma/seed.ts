@@ -8,6 +8,7 @@ import {
   catalogSku,
   CATALOG_COLORS,
   CATALOG_SIZES,
+  CATALOG_STYLES,
 } from "../app/lib/product-catalog";
 import { STORE_POLICIES } from "../app/lib/store-policies";
 import { slugify } from "../app/lib/utils";
@@ -81,6 +82,12 @@ async function main() {
     },
   });
 
+  await db.category.upsert({
+    where: { slug: "accessories" },
+    update: { name: "Accessories" },
+    create: { name: "Accessories", slug: "accessories", sortOrder: 2 },
+  });
+
   const menPants = await db.category.upsert({
     where: { slug: "men-pants" },
     update: {},
@@ -121,6 +128,7 @@ async function main() {
   });
 
   const catalogProducts = buildCatalogProducts();
+  const productIds = new Map<string, string>();
 
   for (const item of catalogProducts) {
     const categoryId =
@@ -141,7 +149,7 @@ async function main() {
         basePrice: item.basePrice,
         categoryId,
         fabricTypeId: fabricType.id,
-        status: ProductStatus.active,
+        status: ProductStatus.archived,
         seoTitle: `${item.name} | shiftshappn`,
         seoDescription: item.shortDescription,
       },
@@ -154,11 +162,12 @@ async function main() {
         compareAtPrice: null,
         categoryId,
         fabricTypeId: fabricType.id,
-        status: ProductStatus.active,
+        status: ProductStatus.archived,
         seoTitle: `${item.name} | shiftshappn`,
         seoDescription: item.shortDescription,
       },
     });
+    productIds.set(item.slug, product.id);
 
     const variants = item.colors.flatMap((color) =>
       CATALOG_SIZES.map((size) => ({
@@ -192,6 +201,38 @@ async function main() {
     });
   }
 
+  for (const style of CATALOG_STYLES) {
+    const topId = productIds.get(`${style.slug}-top`);
+    const pantsId = productIds.get(`${style.slug}-pants`);
+    if (!topId || !pantsId) continue;
+
+    const bundle = await db.bundle.upsert({
+      where: { slug: style.slug },
+      update: {
+        name: style.name,
+        description: style.features.join(" • "),
+      },
+      create: {
+        slug: style.slug,
+        name: style.name,
+        description: style.features.join(" • "),
+        discountType: "fixed",
+        discountValue: 0,
+      },
+    });
+
+    await db.bundleProduct.upsert({
+      where: { bundleId_productId: { bundleId: bundle.id, productId: topId } },
+      update: { role: "top", sortOrder: 0 },
+      create: { bundleId: bundle.id, productId: topId, role: "top", sortOrder: 0 },
+    });
+    await db.bundleProduct.upsert({
+      where: { bundleId_productId: { bundleId: bundle.id, productId: pantsId } },
+      update: { role: "pants", sortOrder: 1 },
+      create: { bundleId: bundle.id, productId: pantsId, role: "pants", sortOrder: 1 },
+    });
+  }
+
   const retiredSlugs = [
     "one-pocket-scrub-top",
     "jogger-scrub-pants",
@@ -216,7 +257,7 @@ async function main() {
         headline: "Scrubs that feel like they were made for your shift, not against it.",
         body: "Soft, stretch fabric with pockets that actually hold what you carry.",
         ctaLabel: "Shop the collection",
-        ctaLink: "/collections/best-sellers",
+        ctaLink: "/shop",
       },
     },
     {
@@ -239,7 +280,7 @@ async function main() {
         items: [
           { label: "Tops", link: "/shop/women", icon: "shirt" },
           { label: "Pants", link: "/shop/women", icon: "pants" },
-          { label: "Sets", link: "/collections/best-sellers", icon: "layers" },
+          { label: "Sets", link: "/shop", icon: "layers" },
           { label: "Accessories", link: "/shop", icon: "bag" },
           { label: "Find my size", link: "/size-chart", icon: "ruler" },
         ],
@@ -264,7 +305,7 @@ async function main() {
         headline: "Best sellers",
         layout: "carousel",
         collectionSlug: "best-sellers",
-        productSlugs: ["nova-top", "zephyr-top", "luna-pants", "eclipse-top", "aura-pants"],
+        productSlugs: ["nova", "zephyr", "luna", "eclipse", "aura"],
       },
     },
     {
@@ -281,10 +322,10 @@ async function main() {
       order: 6,
       content: {
         badge: "BEST VALUE",
-        headline: "The shift bundle",
-        body: "Full scrub set + tote. $53 off — limited stock.",
-        ctaLabel: "Shop bundle",
-        ctaLink: "/collections/bundles",
+        headline: "The shift set",
+        body: "One colour. Choose the top size and the pants size that fit you.",
+        ctaLabel: "Shop sets",
+        ctaLink: "/shop",
       },
     },
     {
@@ -388,6 +429,72 @@ async function main() {
         data: homepageBlocks.find((b) => b.type === HomepageBlockType.giftCardBanner)!,
       });
     }
+  }
+
+  const setSlugs = ["nova", "zephyr", "luna", "eclipse", "aura"];
+  const grids = await db.homepageBlock.findMany({
+    where: { type: HomepageBlockType.productGrid },
+  });
+  for (const block of grids) {
+    const content = (block.content ?? {}) as Record<string, unknown>;
+    await db.homepageBlock.update({
+      where: { id: block.id },
+      data: {
+        content: {
+          ...content,
+          productSlugs: setSlugs,
+        },
+      },
+    });
+  }
+
+  const banners = await db.homepageBlock.findMany({
+    where: { type: HomepageBlockType.bundleBanner },
+  });
+  for (const block of banners) {
+    const content = (block.content ?? {}) as Record<string, unknown>;
+    await db.homepageBlock.update({
+      where: { id: block.id },
+      data: {
+        content: {
+          ...content,
+          headline: "The shift set",
+          body: "One colour. Choose the top size and the pants size that fit you.",
+          ctaLabel: "Shop sets",
+          ctaLink: "/shop",
+        },
+      },
+    });
+  }
+
+  const heroes = await db.homepageBlock.findMany({
+    where: { type: HomepageBlockType.hero },
+  });
+  for (const block of heroes) {
+    const content = (block.content ?? {}) as Record<string, unknown>;
+    if (content.ctaLink === "/collections/best-sellers") {
+      await db.homepageBlock.update({
+        where: { id: block.id },
+        data: { content: { ...content, ctaLink: "/shop" } },
+      });
+    }
+  }
+
+  const quickShops = await db.homepageBlock.findMany({
+    where: { type: HomepageBlockType.quickShopRow },
+  });
+  for (const block of quickShops) {
+    const content = (block.content ?? {}) as { items?: Array<{ label?: string; link?: string; icon?: string }> };
+    if (!Array.isArray(content.items)) continue;
+    const items = content.items.map((item) =>
+      item.link === "/collections/best-sellers" || item.link === "/collections/bundles"
+        ? { ...item, link: "/shop" }
+        : item
+    );
+    await db.homepageBlock.update({
+      where: { id: block.id },
+      data: { content: { ...content, items } },
+    });
   }
 
   await db.review.createMany({

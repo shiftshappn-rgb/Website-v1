@@ -41,6 +41,12 @@ function toProductSummary(product: (typeof demoProducts)[number]): ProductSummar
     colors,
     imagePublicId: product.variants[0]?.images[0]?.publicId,
     imageAlt: product.variants[0]?.images[0]?.altText ?? product.name,
+    images: product.variants.flatMap((variant) =>
+      variant.images.map((image) => ({
+        publicId: image.publicId,
+        alt: image.altText || product.name,
+      }))
+    ),
   };
 }
 

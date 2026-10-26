@@ -2,6 +2,8 @@ import type { Prisma } from "@prisma/client";
 import { tryDb } from "~/db.server";
 import { serializeProductForCard } from "~/lib/serialize.server";
 import type { ProductCardData } from "~/lib/serialize";
+import { piecePrices } from "~/lib/sets";
+import { collectCardImages, parseVariantImages } from "~/lib/utils";
 
 export const productCardSelect = {
   id: true,
@@ -26,22 +28,6 @@ type FilterSource = {
   variants: Array<{ colorName: string; colorHex?: string }>;
 };
 
-function categoryWhere(slug?: string): Prisma.ProductWhereInput {
-  if (!slug) return {};
-  return {
-    OR: [
-      { category: { slug } },
-      { category: { parent: { slug } } },
-    ],
-  };
-}
-
-function productOrderBy(sort: string): Prisma.ProductOrderByWithRelationInput {
-  if (sort === "price-asc") return { basePrice: "asc" };
-  if (sort === "price-desc") return { basePrice: "desc" };
-  return { createdAt: "desc" };
-}
-
 function deriveFilters(products: FilterSource[]) {
   const colorMap = new Map<string, string>();
   for (const product of products) {
@@ -65,6 +51,123 @@ function deriveFilters(products: FilterSource[]) {
     colors,
     fabrics: [...fabricMap.entries()].map(([slug, name]) => ({ slug, name })),
   };
+}
+
+type SetCard = {
+  createdAt: Date;
+  audience: string | null;
+  fabricSlug: string | null;
+  fabricName: string | null;
+  card: ProductCardData;
+};
+
+const setListSelect = {
+  id: true,
+  slug: true,
+  name: true,
+  description: true,
+  discountType: true,
+  discountValue: true,
+  createdAt: true,
+  products: {
+    select: {
+      role: true,
+      product: {
+        select: {
+          ...productCardSelect,
+          category: { select: { slug: true, parent: { select: { slug: true } } } },
+        },
+      },
+    },
+  },
+} satisfies Prisma.BundleSelect;
+
+function sharedColorList(
+  top: Array<{ colorName: string; colorHex: string; images: unknown }>,
+  pants: Array<{ colorName: string; colorHex: string; images: unknown }>
+) {
+  const pantsColors = new Set(pants.map((variant) => variant.colorName));
+  const seen = new Set<string>();
+  const colors: Array<{ name: string; hex: string }> = [];
+
+  function add(variant: { colorName: string; colorHex: string }) {
+    if (seen.has(variant.colorName)) return;
+    seen.add(variant.colorName);
+    colors.push({ name: variant.colorName, hex: variant.colorHex });
+  }
+
+  function hasImages(colorName: string) {
+    return [...top, ...pants].some(
+      (variant) =>
+        variant.colorName === colorName && parseVariantImages(variant.images).length > 0
+    );
+  }
+
+  for (const variant of top) {
+    if (pantsColors.has(variant.colorName)) add(variant);
+  }
+  for (const variant of [...top, ...pants]) {
+    if (hasImages(variant.colorName)) add(variant);
+  }
+  return colors;
+}
+
+function toSetCard(
+  bundle: Prisma.BundleGetPayload<{ select: typeof setListSelect }>
+): SetCard | null {
+  const top = bundle.products.find((item) => item.role === "top")?.product;
+  const pants = bundle.products.find((item) => item.role === "pants")?.product;
+  if (!top || !pants) return null;
+
+  const topPrice = Number(top.basePrice);
+  const pantsPrice = Number(pants.basePrice);
+  const prices = piecePrices(
+    topPrice,
+    pantsPrice,
+    bundle.discountType,
+    Number(bundle.discountValue)
+  );
+  const images = collectCardImages([top.variants, pants.variants], `${bundle.name} set`);
+  const sum = topPrice + pantsPrice;
+
+  return {
+    createdAt: bundle.createdAt,
+    audience: top.category?.parent?.slug ?? top.category?.slug ?? null,
+    fabricSlug: top.fabricType?.slug ?? null,
+    fabricName: top.fabricType?.name ?? null,
+    card: {
+      id: bundle.id,
+      slug: bundle.slug,
+      name: `${bundle.name} set`,
+      shortDescription: bundle.description,
+      basePrice: prices.total,
+      compareAtPrice: prices.total < sum ? sum : null,
+      colors: sharedColorList(top.variants, pants.variants),
+      imagePublicId: images[0]?.publicId,
+      imageAlt: images[0]?.alt ?? `${bundle.name} set`,
+      images,
+      href: `/sets/${bundle.slug}`,
+    },
+  };
+}
+
+async function loadSetCards(db: NonNullable<ReturnType<typeof tryDb>>) {
+  const bundles = await db.bundle.findMany({
+    orderBy: { createdAt: "desc" },
+    select: setListSelect,
+  });
+  return bundles.flatMap((bundle) => {
+    const card = toSetCard(bundle);
+    return card ? [card] : [];
+  });
+}
+
+function sortSetCards(sets: SetCard[], sort: string) {
+  const copy = [...sets];
+  if (sort === "price-asc") copy.sort((a, b) => a.card.basePrice - b.card.basePrice);
+  else if (sort === "price-desc") copy.sort((a, b) => b.card.basePrice - a.card.basePrice);
+  else copy.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  return copy;
 }
 
 export type ShopListingResult = {
@@ -97,47 +200,31 @@ export async function loadShopListing(opts: {
   const db = tryDb();
   if (!db) return empty;
 
-  const categoryFilter = categoryWhere(opts.categorySlug);
-  const listingWhere: Prisma.ProductWhereInput = {
-    status: "active",
-    ...categoryFilter,
-    ...(fabric ? { fabricType: { slug: fabric } } : {}),
-    ...(color ? { variants: { some: { colorName: color } } } : {}),
-  };
-
-  if (!color && !fabric) {
-    const rows = await db.product.findMany({
-      where: listingWhere,
-      select: productCardSelect,
-      orderBy: productOrderBy(sort),
-    });
-
-    return {
-      products: rows.map(serializeProductForCard),
-      filters: deriveFilters(rows),
-      activeFilters: { color, fabric, sort },
-      cloudName,
-    };
-  }
-
-  const [rows, filterRows] = await Promise.all([
-    db.product.findMany({
-      where: listingWhere,
-      select: productCardSelect,
-      orderBy: productOrderBy(sort),
-    }),
-    db.product.findMany({
-      where: { status: "active", ...categoryFilter },
-      select: {
-        fabricType: { select: { slug: true, name: true } },
-        variants: { select: { colorName: true, colorHex: true } },
-      },
-    }),
-  ]);
+  const sets = await loadSetCards(db);
+  const inAudience = opts.categorySlug
+    ? sets.filter((set) => set.audience === opts.categorySlug)
+    : sets;
+  const filters = deriveFilters(
+    inAudience.map((set) => ({
+      fabricType:
+        set.fabricSlug && set.fabricName
+          ? { slug: set.fabricSlug, name: set.fabricName }
+          : null,
+      variants: set.card.colors.map((colorOption) => ({
+        colorName: colorOption.name,
+        colorHex: colorOption.hex,
+      })),
+    }))
+  );
+  const listed = inAudience.filter((set) => {
+    if (fabric && set.fabricSlug !== fabric) return false;
+    if (color && !set.card.colors.some((option) => option.name === color)) return false;
+    return true;
+  });
 
   return {
-    products: rows.map(serializeProductForCard),
-    filters: deriveFilters(filterRows),
+    products: sortSetCards(listed, sort).map((set) => set.card),
+    filters,
     activeFilters: { color, fabric, sort },
     cloudName,
   };
@@ -179,12 +266,29 @@ export async function loadProductsByCollectionSlugs(slugs: string[]) {
   return Object.fromEntries(pairs) as Record<string, ProductCardData[]>;
 }
 
+export async function loadSetCardsBySlugs(slugs: string[]) {
+  const db = tryDb();
+  if (!db || slugs.length === 0) return [] as ProductCardData[];
+  const sets = await loadSetCards(db);
+  const bySlug = new Map(sets.map((set) => [set.card.slug, set.card]));
+  return slugs
+    .map((slug) => bySlug.get(slug))
+    .filter((card): card is ProductCardData => card != null);
+}
+
 export async function loadProductGridBlockProducts(content: {
   productSlugs?: string[];
   collectionSlug?: string;
 }) {
   if (content.productSlugs?.length) {
-    return loadProductsBySlugs(content.productSlugs);
+    const sets = await loadSetCardsBySlugs(content.productSlugs);
+    const found = new Set(sets.map((set) => set.slug));
+    const rest = content.productSlugs.filter((slug) => !found.has(slug));
+    const products = rest.length ? await loadProductsBySlugs(rest) : [];
+    const bySlug = new Map([...sets, ...products].map((item) => [item.slug, item]));
+    return content.productSlugs
+      .map((slug) => bySlug.get(slug))
+      .filter((item): item is ProductCardData => item != null);
   }
   if (content.collectionSlug) {
     return loadCollectionProducts(content.collectionSlug);
@@ -266,29 +370,13 @@ export async function loadShopByColour(selectedColor: string | null) {
     };
   }
 
-  const [variants, rows] = await Promise.all([
-    db.productVariant.findMany({
-      where: { product: { status: "active" } },
-      select: { colorName: true, colorHex: true },
-    }),
-    selectedColor
-      ? db.product.findMany({
-          where: {
-            status: "active",
-            variants: { some: { colorName: selectedColor } },
-          },
-          select: productCardSelect,
-        })
-      : Promise.resolve([]),
-  ]);
-
+  const sets = await loadSetCards(db);
   const colorMap = new Map<string, { hex: string; count: number }>();
-  for (const v of variants) {
-    const existing = colorMap.get(v.colorName);
-    if (existing) {
-      existing.count += 1;
-    } else {
-      colorMap.set(v.colorName, { hex: v.colorHex, count: 1 });
+  for (const set of sets) {
+    for (const color of set.card.colors) {
+      const existing = colorMap.get(color.name);
+      if (existing) existing.count += 1;
+      else colorMap.set(color.name, { hex: color.hex, count: 1 });
     }
   }
 
@@ -298,7 +386,11 @@ export async function loadShopByColour(selectedColor: string | null) {
 
   return {
     colors,
-    products: rows.map(serializeProductForCard),
+    products: selectedColor
+      ? sets
+          .filter((set) => set.card.colors.some((color) => color.name === selectedColor))
+          .map((set) => set.card)
+      : [],
     selectedColor,
     cloudName,
   };
@@ -322,7 +414,7 @@ export async function loadShopByFabric(fabricSlug: string | null) {
     };
   }
 
-  const [fabricTypes, rows] = await Promise.all([
+  const [fabricTypes, sets] = await Promise.all([
     db.fabricType.findMany({
       orderBy: { name: "asc" },
       select: {
@@ -330,26 +422,22 @@ export async function loadShopByFabric(fabricSlug: string | null) {
         name: true,
         slug: true,
         description: true,
-        _count: { select: { products: { where: { status: "active" } } } },
       },
     }),
-    fabricSlug
-      ? db.product.findMany({
-          where: { status: "active", fabricType: { slug: fabricSlug } },
-          select: productCardSelect,
-        })
-      : Promise.resolve([]),
+    loadSetCards(db),
   ]);
 
   return {
-    fabrics: fabricTypes.map((f) => ({
-      id: f.id,
-      name: f.name,
-      slug: f.slug,
-      description: f.description,
-      productCount: f._count.products,
+    fabrics: fabricTypes.map((fabric) => ({
+      id: fabric.id,
+      name: fabric.name,
+      slug: fabric.slug,
+      description: fabric.description,
+      productCount: sets.filter((set) => set.fabricSlug === fabric.slug).length,
     })),
-    products: rows.map(serializeProductForCard),
+    products: fabricSlug
+      ? sets.filter((set) => set.fabricSlug === fabricSlug).map((set) => set.card)
+      : [],
     selectedFabric: fabricSlug,
     cloudName,
   };

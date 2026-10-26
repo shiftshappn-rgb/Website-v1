@@ -49,7 +49,7 @@ export function ProductCarousel({
             key={product.id}
             product={product}
             cloudName={cloudName}
-            className="w-[72vw] max-w-[17rem] shrink-0 snap-start sm:w-[16rem] lg:w-[18rem]"
+            className="w-[78vw] shrink-0 snap-start sm:w-[calc((100%-1rem)/2)] lg:w-[calc((100%-6rem)/4)]"
             style={{ "--stagger-delay": `${index * 50}ms` } as CSSProperties}
           />
         ))}

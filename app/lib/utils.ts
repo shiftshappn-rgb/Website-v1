@@ -69,6 +69,33 @@ export function parseVariantImages(images: unknown): VariantImage[] {
   return result.sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
+export function collectCardImages(
+  groups: Array<Array<{ images: unknown }>>,
+  fallbackAlt: string
+) {
+  const seen = new Set<string>();
+  const images: Array<{ publicId: string; alt: string }> = [];
+
+  function add(image: VariantImage) {
+    if (seen.has(image.publicId)) return;
+    seen.add(image.publicId);
+    images.push({ publicId: image.publicId, alt: image.altText || fallbackAlt });
+  }
+
+  const parsed = groups.map((variants) => variants.map((variant) => parseVariantImages(variant.images)));
+  for (const list of parsed) {
+    for (const variantImages of list) {
+      if (variantImages[0]) add(variantImages[0]);
+    }
+  }
+  for (const list of parsed) {
+    for (const variantImages of list) {
+      variantImages.slice(1).forEach(add);
+    }
+  }
+  return images;
+}
+
 export function normalizeVariantImages(
   images: unknown,
   fallbackAlt = ""

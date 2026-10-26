@@ -3,6 +3,7 @@ import { Form, NavLink } from "react-router";
 import {
   Award,
   BadgePercent,
+  Boxes,
   Folders,
   Gift,
   Image,
@@ -38,6 +39,7 @@ const navItems: Array<{
   { to: "/admin/categories", label: "Categories", icon: Folders },
   { to: "/admin/colors", label: "Colours", icon: Palette },
   { to: "/admin/collections", label: "Collections", icon: Layers },
+  { to: "/admin/packs", label: "Bundles", icon: Boxes },
   { to: "/admin/orders", label: "Orders", icon: ShoppingBag },
   { to: "/admin/customers", label: "Customers", icon: Users },
   { to: "/admin/blog", label: "Blog", icon: Newspaper },

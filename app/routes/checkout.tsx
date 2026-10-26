@@ -88,6 +88,12 @@ export async function action({ request }: Route.ActionArgs) {
 
   if (!cartItems.length) return data({ error: "Cart is empty" }, { status: 400 });
 
+  const requested = new Map<string, number>();
+  for (const item of cartItems) {
+    if (item.kind === "gift_card") continue;
+    requested.set(item.variantId, (requested.get(item.variantId) ?? 0) + item.quantity);
+  }
+
   const lineItems: Array<{
     kind: "product" | "gift_card";
     variantId?: string;
@@ -118,10 +124,17 @@ export async function action({ request }: Route.ActionArgs) {
       include: { product: true },
     });
 
-    if (!variant || variant.product.status !== "active") {
+    const inSet =
+      variant?.product.status === "archived"
+        ? await db.bundleProduct.findFirst({
+            where: { productId: variant.productId },
+            select: { productId: true },
+          })
+        : null;
+    if (!variant || (variant.product.status !== "active" && !inSet)) {
       return data({ error: `Product unavailable: ${item.productName}` }, { status: 400 });
     }
-    if (variant.inventoryQty < item.quantity) {
+    if (variant.inventoryQty < (requested.get(variant.id) ?? item.quantity)) {
       return data(
         { error: `Insufficient stock for ${item.productName} (${item.variantLabel})` },
         { status: 400 }
