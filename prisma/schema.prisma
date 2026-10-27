@@ -52,6 +52,7 @@ enum HomepageBlockType {
   categoryDuo
   productGrid
   bundleBanner
+  packShowcase
   sizeFinderStrip
   fabricCallout
   brandStory

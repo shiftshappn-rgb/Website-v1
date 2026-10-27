@@ -1,4 +1,4 @@
-import type { HomepageBlockType } from "@prisma/client";
+import type { HomepageBlockType } from "~/components/homepage-blocks/types";
 import { buildCatalogProducts } from "~/lib/product-catalog";
 
 export type DemoHomepageBlock = {
@@ -99,9 +99,22 @@ export const demoHomepageBlocks: DemoHomepageBlock[] = [
     },
   },
   {
+    id: "demo-pack-showcase",
+    type: "packShowcase",
+    order: 5,
+    isActive: true,
+    content: {
+      headline: "Bundles",
+      body: "A scrub set plus the extras that round out the shift.",
+      packSlugs: [],
+      ctaLabel: "Shop bundles",
+      ctaLink: "/shop/bundles",
+    },
+  },
+  {
     id: "demo-size-finder",
     type: "sizeFinderStrip",
-    order: 5,
+    order: 6,
     isActive: true,
     content: {
       text: "Not sure of your size? Take our 30-second fit finder.",
@@ -112,7 +125,7 @@ export const demoHomepageBlocks: DemoHomepageBlock[] = [
   {
     id: "demo-bundle-banner",
     type: "bundleBanner",
-    order: 6,
+    order: 7,
     isActive: true,
     content: {
       badge: "BEST VALUE",

@@ -4,12 +4,16 @@ import { Button } from "~/components/ui/Button";
 import { Input, Select, Textarea } from "~/components/ui/Input";
 import { Badge, Card } from "~/components/ui/Badge";
 import { DatabaseUnavailable } from "~/components/admin/DatabaseUnavailable";
+import { PackShowcaseBlockEditor } from "~/components/admin/PackShowcaseBlockEditor";
 import { ProductGridBlockEditor } from "~/components/admin/ProductGridBlockEditor";
-import type { ProductGridContent } from "~/components/homepage-blocks/types";
+import type {
+  PackShowcaseContent,
+  ProductGridContent,
+} from "~/components/homepage-blocks/types";
 import { db, isDatabaseAvailable } from "~/db.server";
 import { requireAdmin } from "~/lib/session.server";
 import type { HomepageBlockType } from "@prisma/client";
-import { ProductStatus } from "@prisma/client";
+import { PackStatus, ProductStatus } from "@prisma/client";
 
 const blockTypes: HomepageBlockType[] = [
   "hero",
@@ -18,6 +22,7 @@ const blockTypes: HomepageBlockType[] = [
   "categoryDuo",
   "productGrid",
   "bundleBanner",
+  "packShowcase",
   "sizeFinderStrip",
   "fabricCallout",
   "brandStory",
@@ -33,7 +38,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   await requireAdmin(request);
 
-  const [blocks, catalogProducts] = await Promise.all([
+  const [blocks, catalogProducts, catalogPacks] = await Promise.all([
     db.homepageBlock.findMany({
       orderBy: { order: "asc" },
     }),
@@ -42,11 +47,17 @@ export async function loader({ request }: Route.LoaderArgs) {
       select: { slug: true, name: true },
       orderBy: { name: "asc" },
     }),
+    db.pack.findMany({
+      where: { status: PackStatus.active },
+      select: { slug: true, name: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   return {
     dbAvailable: true as const,
     catalogProducts,
+    catalogPacks,
     blocks: blocks.map((b) => ({
       id: b.id,
       type: b.type,
@@ -55,6 +66,8 @@ export async function loader({ request }: Route.LoaderArgs) {
       content: JSON.stringify(b.content, null, 2),
       productGridContent:
         b.type === "productGrid" ? (b.content as unknown as ProductGridContent) : null,
+      packShowcaseContent:
+        b.type === "packShowcase" ? (b.content as unknown as PackShowcaseContent) : null,
     })),
   };
 }
@@ -139,6 +152,37 @@ export async function action({ request }: Route.ActionArgs) {
     return redirect("/admin/homepage-blocks");
   }
 
+  if (intent === "updatePackShowcase") {
+    const id = String(formData.get("id") ?? "");
+    const headline = String(formData.get("headline") ?? "").trim();
+    const body = String(formData.get("body") ?? "").trim();
+    const ctaLabel = String(formData.get("ctaLabel") ?? "").trim() || "Shop bundles";
+    const ctaLink = String(formData.get("ctaLink") ?? "").trim() || "/shop/bundles";
+    const packSlugs = formData
+      .getAll("packSlugs")
+      .map((value) => String(value).trim())
+      .filter(Boolean);
+
+    if (!headline) {
+      return { error: "Headline is required." };
+    }
+
+    await db.homepageBlock.update({
+      where: { id },
+      data: {
+        content: {
+          headline,
+          ...(body ? { body } : {}),
+          ctaLabel,
+          ctaLink,
+          packSlugs,
+        },
+      },
+    });
+
+    return redirect("/admin/homepage-blocks");
+  }
+
   if (intent === "update") {
     const id = String(formData.get("id") ?? "");
     const contentRaw = String(formData.get("content") ?? "{}");
@@ -183,7 +227,7 @@ export default function AdminHomepageBlocks({ loaderData, actionData }: Route.Co
     return <DatabaseUnavailable />;
   }
 
-  const { blocks, catalogProducts } = loaderData;
+  const { blocks, catalogProducts, catalogPacks } = loaderData;
 
   return (
     <div className="space-y-6">
@@ -269,6 +313,19 @@ export default function AdminHomepageBlocks({ loaderData, actionData }: Route.Co
                   blockId={block.id}
                   content={block.productGridContent}
                   catalogProducts={catalogProducts}
+                />
+              ) : block.type === "packShowcase" ? (
+                <PackShowcaseBlockEditor
+                  blockId={block.id}
+                  content={
+                    block.packShowcaseContent ?? {
+                      headline: "Bundles",
+                      packSlugs: [],
+                      ctaLabel: "Shop bundles",
+                      ctaLink: "/shop/bundles",
+                    }
+                  }
+                  catalogPacks={catalogPacks}
                 />
               ) : (
                 <Form method="post" className="space-y-3">

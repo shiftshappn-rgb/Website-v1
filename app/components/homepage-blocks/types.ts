@@ -5,6 +5,7 @@ export type HomepageBlockType =
   | "categoryDuo"
   | "productGrid"
   | "bundleBanner"
+  | "packShowcase"
   | "sizeFinderStrip"
   | "fabricCallout"
   | "brandStory"
@@ -27,6 +28,7 @@ export type HomepageBlockContent =
   | CategoryDuoContent
   | ProductGridContent
   | BundleBannerContent
+  | PackShowcaseContent
   | SizeFinderStripContent
   | FabricCalloutContent
   | BrandStoryContent
@@ -78,6 +80,16 @@ export interface BundleBannerContent {
   ctaLabel: string;
   ctaLink: string;
 }
+
+export interface PackShowcaseContent {
+  headline: string;
+  body?: string;
+  packSlugs: string[];
+  ctaLabel?: string;
+  ctaLink?: string;
+}
+
+export type { PackShowcaseItem, PackShowcaseSummary } from "~/lib/packs";
 
 export interface SizeFinderStripContent {
   text: string;
