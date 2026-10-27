@@ -1,6 +1,7 @@
 import type { Route } from "./+types/home";
 import { BlockRenderer } from "~/components/homepage-blocks/BlockRenderer";
 import type {
+  PackShowcaseContent,
   ProductGridContent,
   ProductSummary,
 } from "~/components/homepage-blocks/types";
@@ -10,6 +11,8 @@ import {
   demoHomepageBlocks,
   demoProducts,
 } from "~/lib/demo-data.server";
+import type { PackShowcaseSummary } from "~/lib/packs";
+import { loadPackShowcaseBySlugs } from "~/lib/packs.server";
 import { buildMeta, JsonLd, organizationJsonLd } from "~/lib/seo";
 
 export function meta(): Route.MetaDescriptors {
@@ -75,6 +78,20 @@ async function loadProductsByBlockId(
   return Object.fromEntries(entries) as Record<string, ProductSummary[]>;
 }
 
+async function loadPacksByBlockId(
+  blocks: Array<{ id: string; type: string; content: Record<string, unknown> }>
+) {
+  const showcaseBlocks = blocks.filter((block) => block.type === "packShowcase");
+  const entries = await Promise.all(
+    showcaseBlocks.map(async (block) => {
+      const content = block.content as unknown as PackShowcaseContent;
+      const packs = await loadPackShowcaseBySlugs(content.packSlugs ?? []);
+      return [block.id, packs] as const;
+    })
+  );
+  return Object.fromEntries(entries) as Record<string, PackShowcaseSummary[]>;
+}
+
 export async function loader() {
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
 
@@ -91,6 +108,7 @@ export async function loader() {
     return {
       blocks: demoHomepageBlocks,
       productsByBlockId,
+      packsByBlockId: {},
       cloudName,
     };
   }
@@ -100,6 +118,7 @@ export async function loader() {
     return {
       blocks: demoHomepageBlocks,
       productsByBlockId: {},
+      packsByBlockId: {},
       cloudName,
     };
   }
@@ -117,17 +136,21 @@ export async function loader() {
     isActive: block.isActive,
   }));
 
-  const productsByBlockId = await loadProductsByBlockId(mappedBlocks);
+  const [productsByBlockId, packsByBlockId] = await Promise.all([
+    loadProductsByBlockId(mappedBlocks),
+    loadPacksByBlockId(mappedBlocks),
+  ]);
 
   return {
     blocks: mappedBlocks,
     productsByBlockId,
+    packsByBlockId,
     cloudName,
   };
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { blocks, productsByBlockId, cloudName } = loaderData;
+  const { blocks, productsByBlockId, packsByBlockId, cloudName } = loaderData;
 
   return (
     <>
@@ -136,6 +159,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         blocks={blocks}
         cloudName={cloudName}
         productsByBlockId={productsByBlockId}
+        packsByBlockId={packsByBlockId}
       />
     </>
   );

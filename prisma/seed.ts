@@ -309,8 +309,19 @@ async function main() {
       },
     },
     {
-      type: HomepageBlockType.sizeFinderStrip,
+      type: HomepageBlockType.packShowcase,
       order: 5,
+      content: {
+        headline: "Bundles",
+        body: "A scrub set plus the extras that round out the shift.",
+        packSlugs: [],
+        ctaLabel: "Shop bundles",
+        ctaLink: "/shop/bundles",
+      },
+    },
+    {
+      type: HomepageBlockType.sizeFinderStrip,
+      order: 6,
       content: {
         text: "Not sure of your size? Take our 30-second fit finder.",
         ctaLabel: "Find my fit",
@@ -319,7 +330,7 @@ async function main() {
     },
     {
       type: HomepageBlockType.bundleBanner,
-      order: 6,
+      order: 7,
       content: {
         badge: "BEST VALUE",
         headline: "The shift set",
@@ -330,7 +341,7 @@ async function main() {
     },
     {
       type: HomepageBlockType.giftCardBanner,
-      order: 7,
+      order: 8,
       content: {
         badge: "GIFTING",
         headline: "Give the gift of a better shift",
@@ -343,7 +354,7 @@ async function main() {
     },
     {
       type: HomepageBlockType.fabricCallout,
-      order: 8,
+      order: 9,
       content: {
         headline: "THE FABRIC",
         subheadline:
@@ -354,7 +365,7 @@ async function main() {
     },
     {
       type: HomepageBlockType.brandStory,
-      order: 9,
+      order: 10,
       content: {
         badge: "OUR STORY",
         headline:
@@ -365,7 +376,7 @@ async function main() {
     },
     {
       type: HomepageBlockType.reviewHighlight,
-      order: 10,
+      order: 11,
       content: {
         reviews: [
           {
@@ -394,7 +405,7 @@ async function main() {
     },
     {
       type: HomepageBlockType.valuePropsRow,
-      order: 11,
+      order: 12,
       content: {
         items: [
           { label: "Canadian made", icon: "map-pin" },
@@ -427,6 +438,26 @@ async function main() {
     if (!hasGiftCardBanner) {
       await db.homepageBlock.create({
         data: homepageBlocks.find((b) => b.type === HomepageBlockType.giftCardBanner)!,
+      });
+    }
+
+    const hasPackShowcase = await db.homepageBlock.findFirst({
+      where: { type: HomepageBlockType.packShowcase },
+    });
+    if (!hasPackShowcase) {
+      const productGrid = await db.homepageBlock.findFirst({
+        where: { type: HomepageBlockType.productGrid },
+        orderBy: { order: "asc" },
+      });
+      const packShowcase = homepageBlocks.find(
+        (block) => block.type === HomepageBlockType.packShowcase
+      )!;
+      await db.homepageBlock.create({
+        data: {
+          ...packShowcase,
+          order: (productGrid?.order ?? 4) + 1,
+          isActive: true,
+        },
       });
     }
   }

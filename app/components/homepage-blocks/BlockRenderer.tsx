@@ -4,14 +4,17 @@ import { QuickShopRowBlock } from "./QuickShopRowBlock";
 import { CategoryDuoBlock } from "./CategoryDuoBlock";
 import { ProductGridBlock } from "./ProductGridBlock";
 import { BundleBannerBlock } from "./BundleBannerBlock";
+import { PackShowcaseBlock } from "./PackShowcaseBlock";
 import { SizeFinderStripBlock } from "./SizeFinderStripBlock";
 import { FabricCalloutBlock } from "./FabricCalloutBlock";
 import { BrandStoryBlock } from "./BrandStoryBlock";
 import { ReviewHighlightBlock } from "./ReviewHighlightBlock";
 import { ValuePropsRowBlock } from "./ValuePropsRowBlock";
 import { GiftCardBannerBlock } from "./GiftCardBannerBlock";
+import type { PackShowcaseSummary } from "~/lib/packs";
 import type {
   HomepageBlock,
+  PackShowcaseContent,
   ProductGridContent,
   ProductSummary,
 } from "./types";
@@ -23,6 +26,8 @@ export interface BlockRendererProps {
   cloudName?: string;
   /** Product lists keyed by homepage block id */
   productsByBlockId?: Record<string, ProductSummary[]>;
+  /** Pack showcase lists keyed by homepage block id */
+  packsByBlockId?: Record<string, PackShowcaseSummary[]>;
 }
 
 function asContent<T>(content: Record<string, unknown>): T {
@@ -32,7 +37,8 @@ function asContent<T>(content: Record<string, unknown>): T {
 function renderBlock(
   block: HomepageBlock,
   cloudName?: string,
-  productsByBlockId?: Record<string, ProductSummary[]>
+  productsByBlockId?: Record<string, ProductSummary[]>,
+  packsByBlockId?: Record<string, PackShowcaseSummary[]>
 ) {
   const common = { cloudName };
 
@@ -88,6 +94,17 @@ function renderBlock(
           {...common}
         />
       );
+    case "packShowcase": {
+      const content = asContent<PackShowcaseContent>(block.content);
+      return (
+        <PackShowcaseBlock
+          key={block.id}
+          content={content}
+          packs={packsByBlockId?.[block.id] ?? []}
+          {...common}
+        />
+      );
+    }
     case "sizeFinderStrip":
       return (
         <SizeFinderStripBlock
@@ -145,6 +162,7 @@ export function BlockRenderer({
   blocks,
   cloudName,
   productsByBlockId,
+  packsByBlockId,
 }: BlockRendererProps) {
   const activeBlocks = blocks
     .filter((block) => block.isActive !== false)
@@ -152,7 +170,9 @@ export function BlockRenderer({
 
   return (
     <div className="homepage-blocks">
-      {activeBlocks.map((block) => renderBlock(block, cloudName, productsByBlockId))}
+      {activeBlocks.map((block) =>
+        renderBlock(block, cloudName, productsByBlockId, packsByBlockId)
+      )}
     </div>
   );
 }

@@ -1,9 +1,10 @@
 import { tryDb } from "~/db.server";
+import type { PackShowcaseSummary } from "~/lib/packs";
 import { productCardSelect } from "~/lib/catalog.server";
 import { serializeProductForCard } from "~/lib/serialize.server";
 import type { ProductCardData } from "~/lib/serialize";
 import { allocatePrices, piecePrices } from "~/lib/sets";
-import { collectCardImages } from "~/lib/utils";
+import { collectCardImages, parseVariantImages } from "~/lib/utils";
 
 export async function loadAccessoryProducts(): Promise<ProductCardData[]> {
   const db = tryDb();
@@ -98,6 +99,112 @@ export async function loadPackCards(): Promise<ProductCardData[]> {
         imageAlt: images[0]?.alt || pack.name,
         images,
         href: `/bundles/${pack.slug}`,
+      },
+    ];
+  });
+}
+
+const packShowcaseInclude = {
+  items: {
+    orderBy: { sortOrder: "asc" as const },
+    include: {
+      bundle: {
+        include: {
+          products: {
+            include: {
+              product: {
+                select: {
+                  name: true,
+                  basePrice: true,
+                  variants: { select: { colorName: true, colorHex: true, images: true } },
+                },
+              },
+            },
+          },
+        },
+      },
+      product: {
+        select: {
+          name: true,
+          basePrice: true,
+          status: true,
+          variants: { select: { colorName: true, colorHex: true, images: true } },
+        },
+      },
+    },
+  },
+};
+
+function firstVariantImage(variants: Array<{ images: unknown }>) {
+  for (const variant of variants) {
+    const image = parseVariantImages(variant.images)[0];
+    if (image) return image.publicId;
+  }
+  return undefined;
+}
+
+export async function loadPackShowcaseBySlugs(slugs: string[]): Promise<PackShowcaseSummary[]> {
+  const db = tryDb();
+  if (!db || slugs.length === 0) return [];
+
+  const packs = await db.pack.findMany({
+    where: { status: "active", slug: { in: slugs } },
+    include: packShowcaseInclude,
+  });
+  const bySlug = new Map(packs.map((pack) => [pack.slug, pack]));
+
+  return slugs.flatMap((slug) => {
+    const pack = bySlug.get(slug);
+    if (!pack) return [];
+
+    const setItem = pack.items.find((item) => item.bundle);
+    const top = setItem?.bundle?.products.find((piece) => piece.role === "top")?.product;
+    const pants = setItem?.bundle?.products.find((piece) => piece.role === "pants")?.product;
+    if (!setItem?.bundle || !top || !pants) return [];
+
+    const extras = pack.items
+      .filter((item) => item.product && item.product.status === "active")
+      .map((item) => item.product!);
+    const setPrices = piecePrices(
+      Number(top.basePrice),
+      Number(pants.basePrice),
+      setItem.bundle.discountType,
+      Number(setItem.bundle.discountValue)
+    );
+    const parts = [setPrices.top, setPrices.pants, ...extras.map((extra) => Number(extra.basePrice))];
+    const priced = allocatePrices(parts, pack.discountType, Number(pack.discountValue));
+    const undiscounted = setPrices.total + extras.reduce((sum, extra) => sum + Number(extra.basePrice), 0);
+    const images = collectCardImages(
+      [top.variants, pants.variants, ...extras.map((extra) => extra.variants)],
+      pack.name
+    );
+    const setImage =
+      firstVariantImage(top.variants) ?? firstVariantImage(pants.variants) ?? images[0]?.publicId;
+
+    return [
+      {
+        id: pack.id,
+        slug: pack.slug,
+        name: pack.name,
+        description: pack.description,
+        basePrice: priced.total,
+        compareAtPrice: priced.total < undiscounted ? undiscounted : null,
+        href: `/bundles/${pack.slug}`,
+        imagePublicId: images[0]?.publicId,
+        imageAlt: images[0]?.alt || pack.name,
+        images,
+        items: [
+          {
+            kind: "set" as const,
+            name: `${setItem.bundle.name} set`,
+            imagePublicId: setImage,
+          },
+          ...extras.map((extra) => ({
+            kind: "extra" as const,
+            name: extra.name,
+            imagePublicId: firstVariantImage(extra.variants),
+          })),
+        ],
       },
     ];
   });
