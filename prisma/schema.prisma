@@ -400,6 +400,12 @@ model Review {
   verifiedPurchase Boolean      @default(false)
   status           ReviewStatus @default(pending)
   photos           Json         @default("[]")
+  sizePurchased    String?
+  height           String?
+  lengthPurchased  String?
+  weight           String?
+  occupation       String?
+  fit              String?
   createdAt        DateTime     @default(now())
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)

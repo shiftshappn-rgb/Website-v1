@@ -1,5 +1,5 @@
 import type { Route } from "./+types/shop-bundles";
-import { ProductGrid } from "~/components/storefront/ProductCard";
+import { BundleGrid } from "~/components/storefront/BundleCard";
 import { loadPackCards } from "~/lib/packs.server";
 import { buildMeta } from "~/lib/seo";
 
@@ -13,27 +13,28 @@ export function meta({}: Route.MetaArgs) {
 
 export async function loader() {
   return {
-    products: await loadPackCards(),
+    bundles: await loadPackCards(),
     cloudName: process.env.CLOUDINARY_CLOUD_NAME,
   };
 }
 
 export default function ShopBundles({ loaderData }: Route.ComponentProps) {
-  const { products, cloudName } = loaderData;
+  const { bundles, cloudName } = loaderData;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
-      <header className="mb-8">
-        <h1 className="font-serif text-3xl text-navy lg:text-4xl">Bundles</h1>
-        <p className="mt-2 text-charcoal/70">
-          {products.length} {products.length === 1 ? "bundle" : "bundles"}
+    <div className="mx-auto max-w-350 px-4 py-10 sm:px-6 lg:px-10 lg:py-14">
+      <header className="mb-10 max-w-2xl">
+        <h1 className="text-3xl font-semibold tracking-tight text-charcoal lg:text-4xl">
+          Bundles
+        </h1>
+        <p className="mt-2 text-sm text-charcoal/60">
+          Sets paired with the extras you reach for on shift.
+          {bundles.length > 0
+            ? ` · ${bundles.length} ${bundles.length === 1 ? "bundle" : "bundles"}`
+            : ""}
         </p>
       </header>
-      {products.length === 0 ? (
-        <p className="py-16 text-center text-charcoal/50">No bundles yet.</p>
-      ) : (
-        <ProductGrid products={products} cloudName={cloudName} />
-      )}
+      <BundleGrid bundles={bundles} cloudName={cloudName} />
     </div>
   );
 }

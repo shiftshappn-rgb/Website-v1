@@ -3,9 +3,14 @@ import { neonConfig } from "@neondatabase/serverless";
 import { PrismaClient } from "@prisma/client";
 import ws from "ws";
 
+/** Bump when Prisma schema gains fields that must invalidate a cached client. */
+const PRISMA_CLIENT_SCHEMA_VERSION = 3;
+
 declare global {
   // eslint-disable-next-line no-var
   var __prisma: PrismaClient | undefined;
+  // eslint-disable-next-line no-var
+  var __prismaSchemaVersion: number | undefined;
 }
 
 export function isDatabaseAvailable(): boolean {
@@ -52,7 +57,11 @@ function getPrismaClient(): PrismaClient | null {
     return null;
   }
 
-  if (global.__prisma && clientHasCurrentSchema(global.__prisma)) {
+  if (
+    global.__prisma &&
+    global.__prismaSchemaVersion === PRISMA_CLIENT_SCHEMA_VERSION &&
+    clientHasCurrentSchema(global.__prisma)
+  ) {
     return global.__prisma;
   }
 
@@ -63,6 +72,7 @@ function getPrismaClient(): PrismaClient | null {
 
   const client = createPrismaClient();
   global.__prisma = client;
+  global.__prismaSchemaVersion = PRISMA_CLIENT_SCHEMA_VERSION;
   return client;
 }
 

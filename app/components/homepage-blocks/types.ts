@@ -56,14 +56,22 @@ export interface QuickShopRowContent {
 }
 
 export interface CategoryDuoContent {
+  headline?: string;
+  body?: string;
   womenLabel: string;
   womenLink: string;
+  womenSubline?: string;
   womenImagePublicId?: string;
   womenBgColor?: string;
   menLabel: string;
   menLink: string;
+  menSubline?: string;
   menImagePublicId?: string;
   menBgColor?: string;
+  featureHeadline?: string;
+  featureBody?: string;
+  featureCtaLabel?: string;
+  featureCtaLink?: string;
 }
 
 export interface ProductGridContent {

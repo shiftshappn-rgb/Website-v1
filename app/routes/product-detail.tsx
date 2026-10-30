@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
-import { Star } from "lucide-react";
 import type { Route } from "./+types/product-detail";
 import { data, Link, useActionData, useSearchParams } from "react-router";
 import { ProductGallery } from "~/components/storefront/ProductGallery";
-import { ReviewForm } from "~/components/storefront/ReviewForm";
+import { ProductInfoTabs } from "~/components/storefront/ProductInfoTabs";
+import { ProductReviewsSection } from "~/components/storefront/ProductReviewsSection";
 import { SizeChartDrawer } from "~/components/storefront/SizeChartDrawer";
+import { StarRating } from "~/components/storefront/StarRating";
 import { isDatabaseAvailable, tryDb } from "~/db.server";
 import { productCardSelect } from "~/lib/catalog.server";
 import { useCart } from "~/lib/cart";
 import { cloudinaryImageUrl } from "~/lib/cloudinary";
 import { CATALOG_LENGTHS } from "~/lib/product-catalog";
 import { serializeReview } from "~/lib/reviews";
+import { submitProductReview } from "~/lib/review-submit.server";
 import { getProductColors } from "~/lib/serialize";
 import { serializeProduct, serializeProductForCard } from "~/lib/serialize.server";
 import { getCustomer } from "~/lib/session.server";
@@ -23,6 +25,7 @@ import {
 import { DEFAULT_LENGTH_GUIDE } from "~/lib/size-chart";
 import {
   cn,
+  ctaFromHex,
   formatCurrency,
   getVariantLabel,
 } from "~/lib/utils";
@@ -127,15 +130,6 @@ export async function action({ request, params }: Route.ActionArgs) {
     return { error: "Reviews are unavailable right now." };
   }
 
-  const formData = await request.formData();
-  if (String(formData.get("intent") ?? "") !== "submit-review") {
-    return { error: "Invalid review action." };
-  }
-
-  if (String(formData.get("website") ?? "").trim()) {
-    return { submitted: true };
-  }
-
   const product = await db.product.findUnique({
     where: { slug: params.slug, status: "active" },
     select: { id: true },
@@ -144,51 +138,7 @@ export async function action({ request, params }: Route.ActionArgs) {
     return { error: "Product not found." };
   }
 
-  const customer = await getCustomer(request);
-  const customerName =
-    String(formData.get("customerName") ?? "").trim() || customer?.name?.trim() || "";
-  const title = String(formData.get("title") ?? "").trim() || null;
-  const body = String(formData.get("body") ?? "").trim();
-  const rating = parseInt(String(formData.get("rating") ?? "0"), 10);
-
-  if (customerName.length < 2 || customerName.length > 80) {
-    return { error: "Please enter your name." };
-  }
-  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
-    return { error: "Please choose a rating from 1 to 5." };
-  }
-  if (body.length < 20 || body.length > 2000) {
-    return { error: "Write at least 20 characters about the product." };
-  }
-
-  const verifiedPurchase = customer
-    ? Boolean(
-        await db.orderItem.findFirst({
-          where: {
-            productVariant: { productId: product.id },
-            order: {
-              status: { in: ["paid", "fulfilled"] },
-              OR: [{ customerId: customer.id }, { email: customer.email }],
-            },
-          },
-          select: { id: true },
-        })
-      )
-    : false;
-
-  await db.review.create({
-    data: {
-      productId: product.id,
-      customerName,
-      rating,
-      title,
-      body,
-      verifiedPurchase,
-      status: "pending",
-    },
-  });
-
-  return { submitted: true };
+  return submitProductReview({ db, request, productId: product.id });
 }
 
 function resolveInitialColor(
@@ -223,8 +173,6 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
   );
   const [quantity, setQuantity] = useState(1);
   const [chartOpen, setChartOpen] = useState(false);
-  const [infoTab, setInfoTab] = useState<"details" | "fit" | "fabric">("details");
-
   const selectedVariant = product.variants.find(
     (v) => v.colorName === selectedColor && v.size === selectedSize
   );
@@ -304,6 +252,10 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
       ? "Out of stock"
       : `${formatCurrency(displayPrice)} · Add to bag`;
 
+  const ctaStyle = ctaFromHex(
+    colors.find((color) => color.colorName === selectedColor)?.colorHex
+  );
+
   return (
     <>
       <JsonLd
@@ -366,20 +318,8 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
                 {product.name}
               </h1>
 
-              <a href="#reviews" className="mt-3 flex items-center gap-2">
-                <span className="flex">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Star
-                      key={i}
-                      size={14}
-                      className={
-                        avgRating != null && i < Math.round(avgRating)
-                          ? "fill-charcoal text-charcoal"
-                          : "text-charcoal/20"
-                      }
-                    />
-                  ))}
-                </span>
+              <a href="#reviews" className="mt-3 inline-flex items-center gap-2">
+                <StarRating value={avgRating ?? 0} size={14} />
                 <span className="text-[13px] text-charcoal/55">
                   {avgRating != null
                     ? `${avgRating.toFixed(1)} (${reviews.length} review${reviews.length === 1 ? "" : "s"})`
@@ -505,9 +445,10 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
                   type="button"
                   onClick={handleAddToCart}
                   disabled={!canAdd}
+                  style={ctaStyle}
                   className={cn(
-                    "h-14 flex-1 text-[13px] font-semibold uppercase tracking-[0.16em] text-white",
-                    canAdd ? "bg-charcoal hover:bg-charcoal/90" : "bg-[#6f2f3a]"
+                    "h-14 flex-1 text-[13px] font-semibold uppercase tracking-[0.16em] transition-opacity",
+                    !canAdd && "opacity-90"
                   )}
                 >
                   {addLabel}
@@ -519,123 +460,97 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
                   Free size exchange within 30 days.
                 </Link>
               </p>
-
-              {related[0] && (
-                <section className="mt-14 border-t border-charcoal/10 pt-10">
-                  <h2 className="mb-8 text-2xl font-semibold tracking-tight text-charcoal">
-                    Complete the set
-                  </h2>
-                  <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
-                    <Link to={`/products/${related[0].slug}`} className="shrink-0">
-                      <div className="h-40 w-32 bg-[#f6f6f4]">
-                        {related[0].imagePublicId && (
-                          <img
-                            src={imageSrc(related[0].imagePublicId, 320)}
-                            alt={related[0].imageAlt ?? related[0].name}
-                            className="h-full w-full object-contain"
-                          />
-                        )}
-                      </div>
-                    </Link>
-                    <div className="min-w-0 flex-1">
-                      <Link
-                        to={`/products/${related[0].slug}`}
-                        className="text-[15px] font-medium text-charcoal hover:underline"
-                      >
-                        {related[0].name}
-                      </Link>
-                      <p className="mt-1 text-[13px] text-charcoal/50">
-                        {related[0].colors[0]?.name}
-                      </p>
-                      <p className="mt-3 text-[15px] text-charcoal">
-                        {formatCurrency(related[0].basePrice)}
-                      </p>
-                      <Link
-                        to={`/products/${related[0].slug}`}
-                        className="mt-5 flex h-12 items-center justify-center border border-charcoal text-[13px] font-semibold uppercase tracking-[0.14em]"
-                      >
-                        Shop this style
-                      </Link>
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              <section className="mt-14">
-                <div
-                  className="flex rounded-full bg-[#efeee9] p-1"
-                  role="tablist"
-                  aria-label="Product information"
-                >
-                  {(["details", "fit", "fabric"] as const).map((tab) => (
-                    <button
-                      key={tab}
-                      type="button"
-                      role="tab"
-                      aria-selected={infoTab === tab}
-                      onClick={() => setInfoTab(tab)}
-                      className={cn(
-                        "h-11 flex-1 rounded-full text-[13px] capitalize",
-                        infoTab === tab
-                          ? "bg-white font-medium text-charcoal shadow-sm"
-                          : "text-charcoal/50"
-                      )}
-                    >
-                      {tab}
-                    </button>
-                  ))}
-                </div>
-                <div className="px-1 py-8 text-[15px] leading-7 text-charcoal/80">
-                  {infoTab === "details" && (
-                    <div className="space-y-4">
-                      <p>{detailLines[0] || product.shortDescription}</p>
-                      {detailLines.length > 1 && (
-                        <ul className="list-disc space-y-1 pl-5">
-                          {detailLines.slice(1, 8).map((line) => (
-                            <li key={line}>{line}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  )}
-                  {infoTab === "fit" && (
-                    <div className="space-y-3">
-                      <p className="whitespace-pre-line">
-                        {product.fitSummary ||
-                          "Classic fit. Runs true to size. If you are between sizes, size up."}
-                      </p>
-                      <p>{lengthGuide}</p>
-                      <button
-                        type="button"
-                        onClick={() => setChartOpen(true)}
-                        className="underline underline-offset-4"
-                      >
-                        Size chart
-                      </button>
-                    </div>
-                  )}
-                  {infoTab === "fabric" && (
-                    <div className="space-y-3">
-                      {product.fabricType ? (
-                        <>
-                          <p className="font-medium text-charcoal">{product.fabricType.name}</p>
-                          {product.fabricType.description && <p>{product.fabricType.description}</p>}
-                        </>
-                      ) : (
-                        <p>Fabric details coming soon.</p>
-                      )}
-                      {product.careInstructions && (
-                        <p className="whitespace-pre-line">{product.careInstructions}</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </section>
             </div>
           </div>
 
+          <div className="mt-16 max-w-3xl">
+            <ProductInfoTabs
+              intro={
+                (() => {
+                  const short = product.shortDescription?.trim() ?? "";
+                  const looksLikeFeatures =
+                    short.includes(" • ") || detailLines[0]?.includes(" • ");
+                  if (short && !looksLikeFeatures) return short;
+                  if (detailLines[0] && !detailLines[0].includes(" • ") && detailLines.length > 1) {
+                    return detailLines[0];
+                  }
+                  return `Built for long shifts — the ${product.name} is soft stretch with pockets that actually hold what you carry.`;
+                })()
+              }
+              features={
+                detailLines[0]?.includes(" • ")
+                  ? detailLines[0]
+                      .split("•")
+                      .map((line) => line.trim())
+                      .filter(Boolean)
+                  : detailLines.length > 1 && !detailLines[0].includes(" • ")
+                    ? detailLines.slice(1)
+                    : detailLines
+              }
+              fitSummary={product.fitSummary}
+              lengthGuide={lengthGuide}
+              fabricName={product.fabricType?.name}
+              fabricDescription={product.fabricType?.description}
+              careInstructions={product.careInstructions}
+              onOpenSizeChart={() => setChartOpen(true)}
+            />
+          </div>
+
+          <ProductReviewsSection
+            productSlug={product.slug}
+            productName={product.name}
+            reviews={reviews}
+            avgRating={avgRating}
+            totalCount={reviews.length}
+            cloudName={cloudName}
+            reviewer={reviewer}
+            submitted={actionData?.submitted}
+            error={actionData?.error}
+          />
+
+          {related[0] && (
+            <section className="mt-16 border-t border-charcoal/10 pt-12">
+              <h2 className="mb-8 text-2xl font-semibold tracking-tight text-charcoal">
+                Complete the set
+              </h2>
+              <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
+                <Link to={`/products/${related[0].slug}`} className="shrink-0">
+                  <div className="h-40 w-32 bg-[#f6f6f4]">
+                    {related[0].imagePublicId && (
+                      <img
+                        src={imageSrc(related[0].imagePublicId, 320)}
+                        alt={related[0].imageAlt ?? related[0].name}
+                        className="h-full w-full object-contain"
+                      />
+                    )}
+                  </div>
+                </Link>
+                <div className="min-w-0 flex-1">
+                  <Link
+                    to={`/products/${related[0].slug}`}
+                    className="text-[15px] font-medium text-charcoal hover:underline"
+                  >
+                    {related[0].name}
+                  </Link>
+                  <p className="mt-1 text-[13px] text-charcoal/50">
+                    {related[0].colors[0]?.name}
+                  </p>
+                  <p className="mt-3 text-[15px] text-charcoal">
+                    {formatCurrency(related[0].basePrice)}
+                  </p>
+                  <Link
+                    to={`/products/${related[0].slug}`}
+                    className="mt-5 flex h-12 max-w-xs items-center justify-center border border-charcoal text-[13px] font-semibold uppercase tracking-[0.14em]"
+                  >
+                    Shop this style
+                  </Link>
+                </div>
+              </div>
+            </section>
+          )}
+
           {related[1] && (
-            <section className="mt-8 border-t border-charcoal/10 pt-12">
+            <section className="mt-20 border-t border-charcoal/10 pt-12">
               <h2 className="mb-8 text-2xl font-semibold tracking-tight text-charcoal">
                 Wear it with
               </h2>
@@ -684,58 +599,6 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
               </div>
             </section>
           )}
-
-          <section id="reviews" className="mt-20 scroll-mt-24 border-t border-charcoal/10 pt-12">
-            <h2 className="text-2xl font-semibold tracking-tight text-charcoal">
-              Reviews
-            </h2>
-            <p className="mt-2 text-sm text-charcoal/50">
-              {avgRating != null
-                ? `${avgRating.toFixed(1)} average from ${reviews.length} review${reviews.length === 1 ? "" : "s"}`
-                : "Be the first to review this style."}
-            </p>
-
-            {reviews.length > 0 && (
-              <div className="mt-8 grid gap-px bg-charcoal/10 md:grid-cols-2">
-                {reviews.map((review) => (
-                  <article key={review.id} className="bg-white p-6">
-                    <div className="mb-2 flex gap-0.5">
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <Star
-                          key={i}
-                          size={13}
-                          className={
-                            i < review.rating
-                              ? "fill-charcoal text-charcoal"
-                              : "text-charcoal/20"
-                          }
-                        />
-                      ))}
-                    </div>
-                    {review.title && (
-                      <h3 className="text-[15px] font-medium text-charcoal">{review.title}</h3>
-                    )}
-                    <p className="mt-2 text-sm leading-6 text-charcoal/75">{review.body}</p>
-                    <p className="mt-4 text-[12px] text-charcoal/45">
-                      {review.customerName}
-                      {review.verifiedPurchase && " · Verified purchase"}
-                    </p>
-                  </article>
-                ))}
-              </div>
-            )}
-
-            <div className="mt-10 max-w-xl">
-              <h3 className="mb-4 text-lg font-medium text-charcoal">Write a review</h3>
-              <ReviewForm
-                defaultName={reviewer.name}
-                isSignedIn={reviewer.isSignedIn}
-                verifiedPurchase={reviewer.verifiedPurchase}
-                submitted={actionData?.submitted}
-                error={actionData?.error}
-              />
-            </div>
-          </section>
         </div>
       </div>
 
@@ -749,9 +612,10 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
           type="button"
           onClick={handleAddToCart}
           disabled={!canAdd}
+          style={ctaStyle}
           className={cn(
-            "flex h-13 w-full items-center justify-center text-[13px] font-semibold uppercase tracking-[0.16em] text-white",
-            canAdd ? "bg-charcoal" : "bg-[#6f2f3a]"
+            "flex h-13 w-full items-center justify-center text-[13px] font-semibold uppercase tracking-[0.16em] transition-opacity",
+            !canAdd && "opacity-90"
           )}
         >
           {addLabel}

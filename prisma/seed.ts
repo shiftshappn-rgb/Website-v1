@@ -290,12 +290,23 @@ async function main() {
       type: HomepageBlockType.categoryDuo,
       order: 3,
       content: {
+        headline: "Shop the fit",
+        body: "Scrubs shaped by real shifts — soft stretch, serious pockets, and a fabric that keeps up when the day runs long.",
         womenLabel: "Shop women",
         womenLink: "/shop/women",
-        womenBgColor: "#8FA68E",
+        womenSubline: "Built for her longest days.",
+        womenImagePublicId: "/images/shop-women.jpg",
+        womenBgColor: "#6B2D3C",
         menLabel: "Shop men",
         menLink: "/shop/men",
-        menBgColor: "#5CA8D6",
+        menSubline: "Clean lines. Full range of motion.",
+        menImagePublicId: "/images/shop-men.jpg",
+        menBgColor: "#2B5A8A",
+        featureHeadline: "Meet ShiftKnit",
+        featureBody:
+          "Our signature fabric: 4-way stretch, antimicrobial, and moisture-wicking — dry before your next patient.",
+        featureCtaLabel: "Explore fabric",
+        featureCtaLink: "/shiftknit",
       },
     },
     {
@@ -361,6 +372,7 @@ async function main() {
           "4-way stretch. Antimicrobial. Dry before your next patient.",
         features: [],
         specs: ["82% poly / 18% spandex", "Moisture-wicking"],
+        imagePublicId: "/images/fabric-4way-stretch.jpg",
       },
     },
     {
@@ -372,6 +384,7 @@ async function main() {
           "Designed by a nurse who got tired of scrubs that didn't work as hard as she did.",
         ctaLabel: "Read our story",
         ctaLink: "/about",
+        imagePublicId: "/images/our-story-fabric.png",
       },
     },
     {
@@ -528,20 +541,143 @@ async function main() {
     });
   }
 
-  await db.review.createMany({
-    skipDuplicates: true,
-    data: [
-      {
-        productId: (await db.product.findFirst({ where: { slug: "nova-top" } }))!.id,
-        customerName: "Camille B.",
-        rating: 5,
-        title: "Perfect fit",
-        body: "The fit is just too good. All the pockets mean I never lose my pen.",
-        verifiedPurchase: true,
-        status: "approved",
-      },
-    ],
+  const fabricCallouts = await db.homepageBlock.findMany({
+    where: { type: HomepageBlockType.fabricCallout },
   });
+  for (const block of fabricCallouts) {
+    const content = (block.content ?? {}) as Record<string, unknown>;
+    await db.homepageBlock.update({
+      where: { id: block.id },
+      data: {
+        content: {
+          ...content,
+          imagePublicId: "/images/fabric-4way-stretch.jpg",
+        },
+      },
+    });
+  }
+
+  const brandStories = await db.homepageBlock.findMany({
+    where: { type: HomepageBlockType.brandStory },
+  });
+  for (const block of brandStories) {
+    const content = (block.content ?? {}) as Record<string, unknown>;
+    await db.homepageBlock.update({
+      where: { id: block.id },
+      data: {
+        content: {
+          ...content,
+          imagePublicId: "/images/our-story-fabric.png",
+        },
+      },
+    });
+  }
+
+  const novaTop = await db.product.findFirst({ where: { slug: "nova-top" } });
+  const zephyrTop = await db.product.findFirst({ where: { slug: "zephyr-top" } });
+
+  if (novaTop || zephyrTop) {
+    await db.product.updateMany({
+      where: { slug: { in: ["nova-top", "zephyr-top", "nova-pants", "zephyr-pants"] } },
+      data: { status: ProductStatus.active },
+    });
+  }
+
+  if (novaTop) {
+    await db.review.deleteMany({ where: { productId: novaTop.id } });
+    await db.review.createMany({
+      data: [
+        {
+          productId: novaTop.id,
+          customerName: "Camille B.",
+          rating: 5,
+          title: "Perfect fit",
+          body: "The fit is just too good. All the pockets mean I never lose my pen, and it dries so fast even on a 16-hour shift.",
+          verifiedPurchase: true,
+          status: "approved",
+          sizePurchased: "S",
+          height: "160–165 cm",
+          lengthPurchased: "Straight",
+          weight: "130 lb",
+          occupation: "RN",
+          fit: "True to size",
+          createdAt: new Date("2026-09-12"),
+        },
+        {
+          productId: novaTop.id,
+          customerName: "Jordan T.",
+          rating: 5,
+          title: "Finally scrubs that feel like clothes",
+          body: "Soft from the first wash and the tapered fit still looks sharp at the end of a night shift. Ordering a second colour.",
+          verifiedPurchase: true,
+          status: "approved",
+          sizePurchased: "M",
+          height: "175–180 cm",
+          lengthPurchased: "Tall",
+          weight: "165 lb",
+          occupation: "Paramedic",
+          fit: "True to size",
+          createdAt: new Date("2026-10-02"),
+        },
+      ],
+    });
+  }
+
+  if (zephyrTop) {
+    await db.review.deleteMany({ where: { productId: zephyrTop.id } });
+    await db.review.createMany({
+      data: [
+        {
+          productId: zephyrTop.id,
+          customerName: "Nuttarika I.",
+          rating: 5,
+          title: "So beautiful and so comfy",
+          body: "I've never worn scrubs before so nothing to compare to, but these feel soft, move with me, and the TRI-BAY panels keep everything where it should be.",
+          verifiedPurchase: true,
+          status: "approved",
+          sizePurchased: "XXS",
+          height: "170–175 cm",
+          lengthPurchased: "Straight",
+          weight: "145 lb",
+          occupation: "Physician",
+          fit: "Slightly big",
+          createdAt: new Date("2026-10-29"),
+        },
+        {
+          productId: zephyrTop.id,
+          customerName: "Jennifer L.",
+          rating: 4,
+          title: "Great for long days",
+          body: "Breathable enough for a busy floor and the high-rise waist stays put when I bend. I sized up one for a looser feel.",
+          verifiedPurchase: true,
+          status: "approved",
+          sizePurchased: "S",
+          height: "155–160 cm",
+          lengthPurchased: "Jogger",
+          weight: "120 lb",
+          occupation: "RN",
+          fit: "True to size",
+          createdAt: new Date("2026-10-18"),
+        },
+        {
+          productId: zephyrTop.id,
+          customerName: "Sam R.",
+          rating: 5,
+          title: "Pockets that actually work",
+          body: "Mobile-ready pockets held my phone and shears without sagging. Fabric still looks crisp after a week of washes.",
+          verifiedPurchase: false,
+          status: "approved",
+          sizePurchased: "L",
+          height: "180–185 cm",
+          lengthPurchased: "Tall",
+          weight: "190 lb",
+          occupation: "Respiratory therapist",
+          fit: "True to size",
+          createdAt: new Date("2026-10-05"),
+        },
+      ],
+    });
+  }
 
   await db.blogPost.upsert({
     where: { slug: "why-we-started-shiftshappn" },

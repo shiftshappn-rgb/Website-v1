@@ -1,5 +1,5 @@
 import { tryDb } from "~/db.server";
-import type { PackShowcaseSummary } from "~/lib/packs";
+import type { BundleCardData, PackShowcaseSummary } from "~/lib/packs";
 import { productCardSelect } from "~/lib/catalog.server";
 import { serializeProductForCard } from "~/lib/serialize.server";
 import type { ProductCardData } from "~/lib/serialize";
@@ -19,7 +19,24 @@ export async function loadAccessoryProducts(): Promise<ProductCardData[]> {
   return rows.map(serializeProductForCard);
 }
 
-export async function loadPackCards(): Promise<ProductCardData[]> {
+function firstVariantImage(variants: Array<{ images: unknown }>) {
+  for (const variant of variants) {
+    const image = parseVariantImages(variant.images)[0];
+    if (image) return image.publicId;
+  }
+  return undefined;
+}
+
+function firstPieceImage(
+  variants: Array<{ images: unknown }>,
+  alt: string
+): { publicId: string; alt: string } | null {
+  const publicId = firstVariantImage(variants);
+  if (!publicId) return null;
+  return { publicId, alt };
+}
+
+export async function loadPackCards(): Promise<BundleCardData[]> {
   const db = tryDb();
   if (!db) return [];
 
@@ -36,6 +53,7 @@ export async function loadPackCards(): Promise<ProductCardData[]> {
                 include: {
                   product: {
                     select: {
+                      name: true,
                       basePrice: true,
                       variants: { select: { colorName: true, colorHex: true, images: true } },
                     },
@@ -75,29 +93,33 @@ export async function loadPackCards(): Promise<ProductCardData[]> {
     const parts = [setPrices.top, setPrices.pants, ...extras.map((extra) => Number(extra.basePrice))];
     const priced = allocatePrices(parts, pack.discountType, Number(pack.discountValue));
     const undiscounted = setPrices.total + extras.reduce((sum, extra) => sum + Number(extra.basePrice), 0);
-    const images = collectCardImages(
-      [top.variants, pants.variants, ...extras.map((extra) => extra.variants)],
-      pack.name
-    );
-    const colors = new Map<string, string>();
-    for (const variant of top.variants) {
-      if (pants.variants.some((piece) => piece.colorName === variant.colorName)) {
-        colors.set(variant.colorName, variant.colorHex);
+
+    const pieceImages = [
+      firstPieceImage(top.variants, top.name),
+      firstPieceImage(pants.variants, pants.name),
+      ...extras.map((extra) => firstPieceImage(extra.variants, extra.name)),
+    ].filter((piece): piece is { publicId: string; alt: string } => Boolean(piece));
+
+    // Fall back to flattened gallery if piece images are thin
+    if (pieceImages.length < 2) {
+      const images = collectCardImages(
+        [top.variants, pants.variants, ...extras.map((extra) => extra.variants)],
+        pack.name
+      );
+      for (const image of images) {
+        if (pieceImages.some((piece) => piece.publicId === image.publicId)) continue;
+        pieceImages.push({ publicId: image.publicId, alt: image.alt });
+        if (pieceImages.length >= 4) break;
       }
     }
 
     return [
       {
         id: pack.id,
-        slug: pack.slug,
         name: pack.name,
-        shortDescription: pack.description,
         basePrice: priced.total,
         compareAtPrice: priced.total < undiscounted ? undiscounted : null,
-        colors: [...colors.entries()].map(([name, hex]) => ({ name, hex })),
-        imagePublicId: images[0]?.publicId,
-        imageAlt: images[0]?.alt || pack.name,
-        images,
+        pieceImages: pieceImages.slice(0, 4),
         href: `/bundles/${pack.slug}`,
       },
     ];
@@ -134,14 +156,6 @@ const packShowcaseInclude = {
     },
   },
 };
-
-function firstVariantImage(variants: Array<{ images: unknown }>) {
-  for (const variant of variants) {
-    const image = parseVariantImages(variant.images)[0];
-    if (image) return image.publicId;
-  }
-  return undefined;
-}
 
 export async function loadPackShowcaseBySlugs(slugs: string[]): Promise<PackShowcaseSummary[]> {
   const db = tryDb();
@@ -181,6 +195,20 @@ export async function loadPackShowcaseBySlugs(slugs: string[]): Promise<PackShow
     const setImage =
       firstVariantImage(top.variants) ?? firstVariantImage(pants.variants) ?? images[0]?.publicId;
 
+    const pieceImages = [
+      firstPieceImage(top.variants, top.name),
+      firstPieceImage(pants.variants, pants.name),
+      ...extras.map((extra) => firstPieceImage(extra.variants, extra.name)),
+    ].filter((piece): piece is { publicId: string; alt: string } => Boolean(piece));
+
+    if (pieceImages.length < 2) {
+      for (const image of images) {
+        if (pieceImages.some((piece) => piece.publicId === image.publicId)) continue;
+        pieceImages.push({ publicId: image.publicId, alt: image.alt });
+        if (pieceImages.length >= 4) break;
+      }
+    }
+
     return [
       {
         id: pack.id,
@@ -193,6 +221,7 @@ export async function loadPackShowcaseBySlugs(slugs: string[]): Promise<PackShow
         imagePublicId: images[0]?.publicId,
         imageAlt: images[0]?.alt || pack.name,
         images,
+        pieceImages: pieceImages.slice(0, 4),
         items: [
           {
             kind: "set" as const,

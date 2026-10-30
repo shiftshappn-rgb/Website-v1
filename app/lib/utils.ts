@@ -143,3 +143,24 @@ export function normalizeVariantImages(
 
   return { images: result };
 }
+
+/** CTA fill + text contrast from a product colour swatch hex. */
+export function ctaFromHex(hex?: string | null): {
+  backgroundColor: string;
+  color: string;
+} {
+  const fallback = "#111A22";
+  const raw = (hex ?? "").trim();
+  const withHash = raw.startsWith("#") ? raw : raw ? `#${raw}` : fallback;
+  const digits = withHash.slice(1);
+  const valid = /^[0-9a-fA-F]{6}$/.test(digits);
+  const backgroundColor = valid ? `#${digits}` : fallback;
+  const r = valid ? parseInt(digits.slice(0, 2), 16) : 17;
+  const g = valid ? parseInt(digits.slice(2, 4), 16) : 26;
+  const b = valid ? parseInt(digits.slice(4, 6), 16) : 34;
+  const luminance = (r * 299 + g * 587 + b * 114) / 1000;
+  return {
+    backgroundColor,
+    color: luminance > 165 ? "#111A22" : "#FFFFFF",
+  };
+}
