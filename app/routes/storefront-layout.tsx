@@ -1,6 +1,7 @@
-import { Outlet, useNavigation } from "react-router";
+import { isRouteErrorResponse, Outlet, useNavigation } from "react-router";
 import type { Route } from "./+types/storefront-layout";
 import { NavigationProgress } from "~/components/NavigationProgress";
+import { NotFoundPage } from "~/components/storefront/NotFoundPage";
 import { OfferBanner } from "~/components/storefront/OfferBanner";
 import { Navbar, Footer } from "~/components/storefront/Navbar";
 import { tryDb } from "~/db.server";
@@ -61,4 +62,20 @@ export default function StorefrontLayout({ loaderData }: Route.ComponentProps) {
       <Footer />
     </div>
   );
+}
+
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  if (isRouteErrorResponse(error) && error.status === 404) {
+    return (
+      <div className="flex min-h-screen flex-col">
+        <Navbar />
+        <main id="main-content" className="flex-1">
+          <NotFoundPage />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  throw error;
 }

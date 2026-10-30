@@ -52,6 +52,12 @@ export async function loader({ request }: Route.LoaderArgs) {
       title: r.title,
       body: r.body,
       photos: parseReviewPhotos(r.photos),
+      sizePurchased: r.sizePurchased,
+      height: r.height,
+      lengthPurchased: r.lengthPurchased,
+      weight: r.weight,
+      occupation: r.occupation,
+      fit: r.fit,
       verifiedPurchase: r.verifiedPurchase,
       status: r.status,
       createdAt: r.createdAt.toISOString(),
@@ -173,6 +179,57 @@ export default function AdminReviews({ loaderData, actionData }: Route.Component
                 <p className="font-medium text-charcoal">{review.title}</p>
               )}
               <p className="text-sm text-charcoal/80">{review.body}</p>
+              {(review.sizePurchased ||
+                review.height ||
+                review.lengthPurchased ||
+                review.weight ||
+                review.occupation ||
+                review.fit) && (
+                <dl className="grid gap-1 rounded-lg bg-sand/60 px-3 py-2 text-xs text-charcoal/70 sm:grid-cols-2">
+                  {review.sizePurchased && (
+                    <div>
+                      <dt className="inline text-charcoal/45">Size: </dt>
+                      <dd className="inline font-medium text-charcoal">
+                        {review.sizePurchased}
+                      </dd>
+                    </div>
+                  )}
+                  {review.lengthPurchased && (
+                    <div>
+                      <dt className="inline text-charcoal/45">Length: </dt>
+                      <dd className="inline font-medium text-charcoal">
+                        {review.lengthPurchased}
+                      </dd>
+                    </div>
+                  )}
+                  {review.height && (
+                    <div>
+                      <dt className="inline text-charcoal/45">Height: </dt>
+                      <dd className="inline font-medium text-charcoal">{review.height}</dd>
+                    </div>
+                  )}
+                  {review.weight && (
+                    <div>
+                      <dt className="inline text-charcoal/45">Weight: </dt>
+                      <dd className="inline font-medium text-charcoal">{review.weight}</dd>
+                    </div>
+                  )}
+                  {review.occupation && (
+                    <div>
+                      <dt className="inline text-charcoal/45">Occupation: </dt>
+                      <dd className="inline font-medium text-charcoal">
+                        {review.occupation}
+                      </dd>
+                    </div>
+                  )}
+                  {review.fit && (
+                    <div>
+                      <dt className="inline text-charcoal/45">Fit: </dt>
+                      <dd className="inline font-medium text-charcoal">{review.fit}</dd>
+                    </div>
+                  )}
+                </dl>
+              )}
               {review.photos.length > 0 && cloudName && (
                 <div className="flex flex-wrap gap-2">
                   {review.photos.map((publicId) => (

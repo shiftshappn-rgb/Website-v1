@@ -5,7 +5,15 @@ export function getCloudinaryUrl(
   width: number,
   cloudName?: string
 ): string | null {
-  if (!cloudName || !publicId) return null;
+  if (!publicId) return null;
+  if (
+    publicId.startsWith("/") ||
+    publicId.startsWith("http://") ||
+    publicId.startsWith("https://")
+  ) {
+    return publicId;
+  }
+  if (!cloudName) return null;
   return `https://res.cloudinary.com/${cloudName}/image/upload/f_auto,q_auto,w_${width}/${publicId}`;
 }
 

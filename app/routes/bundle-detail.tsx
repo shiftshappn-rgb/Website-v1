@@ -7,7 +7,7 @@ import { isDatabaseAvailable, tryDb } from "~/db.server";
 import { useCart } from "~/lib/cart";
 import { allocatePrices, piecePrices, sortSizes } from "~/lib/sets";
 import { buildMeta, breadcrumbJsonLd, JsonLd, productJsonLd } from "~/lib/seo";
-import { cn, formatCurrency, parseVariantImages } from "~/lib/utils";
+import { cn, ctaFromHex, formatCurrency, parseVariantImages } from "~/lib/utils";
 
 type PieceVariant = {
   id: string;
@@ -312,6 +312,10 @@ export default function BundleDetail({ loaderData }: Route.ComponentProps) {
           ? "Out of stock"
           : `${formatCurrency(priced.total)} · Add to bag`;
 
+  const ctaStyle = ctaFromHex(
+    pack.set.colors.find((item) => item.name === color)?.hex
+  );
+
   return (
     <>
       <JsonLd
@@ -475,9 +479,10 @@ export default function BundleDetail({ loaderData }: Route.ComponentProps) {
                   type="button"
                   onClick={handleAdd}
                   disabled={!canAdd}
+                  style={ctaStyle}
                   className={cn(
-                    "h-14 flex-1 text-[13px] font-semibold uppercase tracking-[0.16em] text-white",
-                    canAdd ? "bg-charcoal hover:bg-charcoal/90" : "bg-[#6f2f3a]"
+                    "h-14 flex-1 text-[13px] font-semibold uppercase tracking-[0.16em] transition-opacity",
+                    !canAdd && "opacity-90"
                   )}
                 >
                   {addLabel}
@@ -499,9 +504,10 @@ export default function BundleDetail({ loaderData }: Route.ComponentProps) {
           type="button"
           onClick={handleAdd}
           disabled={!canAdd}
+          style={ctaStyle}
           className={cn(
-            "h-12 w-full text-[12px] font-semibold uppercase tracking-[0.14em] text-white",
-            canAdd ? "bg-charcoal" : "bg-[#6f2f3a]"
+            "h-12 w-full text-[12px] font-semibold uppercase tracking-[0.14em] transition-opacity",
+            !canAdd && "opacity-90"
           )}
         >
           {addLabel}

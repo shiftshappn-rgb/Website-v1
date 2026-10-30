@@ -78,12 +78,23 @@ export const demoHomepageBlocks: DemoHomepageBlock[] = [
     order: 3,
     isActive: true,
     content: {
+      headline: "Shop the fit",
+      body: "Scrubs shaped by real shifts — soft stretch, serious pockets, and a fabric that keeps up when the day runs long.",
       womenLabel: "Shop women",
       womenLink: "/shop/women",
-      womenBgColor: "#8FA68E",
+      womenSubline: "Built for her longest days.",
+      womenImagePublicId: "/images/shop-women.jpg",
+      womenBgColor: "#6B2D3C",
       menLabel: "Shop men",
       menLink: "/shop/men",
-      menBgColor: "#5CA8D6",
+      menSubline: "Clean lines. Full range of motion.",
+      menImagePublicId: "/images/shop-men.jpg",
+      menBgColor: "#2B5A8A",
+      featureHeadline: "Meet ShiftKnit",
+      featureBody:
+        "Our signature fabric: 4-way stretch, antimicrobial, and moisture-wicking — dry before your next patient.",
+      featureCtaLabel: "Explore fabric",
+      featureCtaLink: "/shiftknit",
     },
   },
   {
@@ -161,6 +172,7 @@ export const demoHomepageBlocks: DemoHomepageBlock[] = [
         "4-way stretch. Antimicrobial. Dry before your next patient.",
       features: [],
       specs: ["82% poly / 18% spandex", "Moisture-wicking"],
+      imagePublicId: "/images/fabric-4way-stretch.jpg",
     },
   },
   {
@@ -174,6 +186,7 @@ export const demoHomepageBlocks: DemoHomepageBlock[] = [
         "Designed by a nurse who got tired of scrubs that didn't work as hard as she did.",
       ctaLabel: "Read our story",
       ctaLink: "/about",
+      imagePublicId: "/images/our-story-fabric.png",
     },
   },
   {

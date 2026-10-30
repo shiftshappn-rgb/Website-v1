@@ -7,6 +7,7 @@ import {
   ScrollRestoration,
 } from "react-router";
 import type { Route } from "./+types/root";
+import { NotFoundPage } from "~/components/storefront/NotFoundPage";
 import "./app.css";
 
 export const links: Route.LinksFunction = () => [
@@ -59,30 +60,35 @@ export default function App() {
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  if (isRouteErrorResponse(error) && error.status === 404) {
+    return (
+      <main id="main-content">
+        <NotFoundPage />
+      </main>
+    );
+  }
+
   let message = "Something went wrong";
   let details = "An unexpected error occurred.";
   let status = 500;
 
   if (isRouteErrorResponse(error)) {
     status = error.status;
-    message = error.status === 404 ? "Page not found" : "Error";
-    details =
-      error.status === 404
-        ? "The page you're looking for doesn't exist."
-        : error.statusText || details;
+    message = "Error";
+    details = error.statusText || details;
   } else if (import.meta.env.DEV && error instanceof Error) {
     details = error.message;
   }
 
   return (
-    <main className="min-h-screen bg-sand flex items-center justify-center px-4">
-      <div className="text-center max-w-md">
-        <p className="text-6xl font-serif text-navy mb-4">{status}</p>
-        <h1 className="text-2xl font-serif text-charcoal mb-2">{message}</h1>
-        <p className="text-charcoal/70 mb-8">{details}</p>
+    <main className="flex min-h-screen items-center justify-center bg-sand px-4">
+      <div className="max-w-md text-center">
+        <p className="mb-4 font-serif text-6xl text-navy">{status}</p>
+        <h1 className="mb-2 font-serif text-2xl text-charcoal">{message}</h1>
+        <p className="mb-8 text-charcoal/70">{details}</p>
         <a
           href="/"
-          className="inline-flex items-center justify-center px-6 py-3 bg-navy text-white rounded-full text-sm font-medium hover:bg-navy/90 transition-colors"
+          className="inline-flex items-center justify-center rounded-full bg-navy px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-navy/90"
         >
           Back to home
         </a>

@@ -39,3 +39,4 @@ pnpm-debug.log*
 
 # react-router typegen
 .react-router/
+.superpowers/

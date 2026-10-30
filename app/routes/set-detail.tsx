@@ -2,13 +2,17 @@ import { useMemo, useState } from "react";
 import type { Route } from "./+types/set-detail";
 import { data, Link, useSearchParams } from "react-router";
 import { ProductGallery } from "~/components/storefront/ProductGallery";
+import { ProductInfoTabs } from "~/components/storefront/ProductInfoTabs";
 import { SizeChartDrawer } from "~/components/storefront/SizeChartDrawer";
 import { isDatabaseAvailable, tryDb } from "~/db.server";
+import { productCardSelect } from "~/lib/catalog.server";
 import { useCart } from "~/lib/cart";
 import { piecePrices, sortSizes } from "~/lib/sets";
 import { buildMeta, breadcrumbJsonLd, JsonLd, productJsonLd } from "~/lib/seo";
 import { cloudinaryImageUrl } from "~/lib/cloudinary";
-import { cn, formatCurrency, parseVariantImages } from "~/lib/utils";
+import { serializeProductForCard } from "~/lib/serialize.server";
+import { DEFAULT_LENGTH_GUIDE } from "~/lib/size-chart";
+import { cn, ctaFromHex, formatCurrency, parseVariantImages } from "~/lib/utils";
 
 type PieceVariant = {
   id: string;
@@ -49,6 +53,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
           product: {
             include: {
               variants: true,
+              fabricType: true,
               category: { include: { parent: true } },
             },
           },
@@ -105,6 +110,45 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const audience = category?.parent?.slug ?? category?.slug ?? null;
   const requested = new URL(request.url).searchParams.get("color");
 
+  const infoProduct = topLink.product;
+  const excludeIds = [top.id, pants.id];
+  const audienceCategoryId =
+    category?.parentCategoryId ?? category?.id ?? null;
+
+  async function findWearWith(status?: "active") {
+    const audienceFilter = audienceCategoryId
+      ? {
+          OR: [
+            { category: { slug: "accessories" } },
+            { categoryId: audienceCategoryId },
+            { category: { parentCategoryId: audienceCategoryId } },
+          ],
+        }
+      : { category: { slug: "accessories" } };
+
+    return db.product.findMany({
+      where: {
+        id: { notIn: excludeIds },
+        ...audienceFilter,
+        ...(status ? { status } : {}),
+      },
+      take: 1,
+      orderBy: { updatedAt: "desc" },
+      select: productCardSelect,
+    });
+  }
+
+  let wearWithRows = await findWearWith("active");
+  if (wearWithRows.length === 0) wearWithRows = await findWearWith();
+  if (wearWithRows.length === 0) {
+    wearWithRows = await db.product.findMany({
+      where: { id: { notIn: excludeIds } },
+      take: 1,
+      orderBy: { updatedAt: "desc" },
+      select: productCardSelect,
+    });
+  }
+
   return {
     set: {
       id: bundle.id,
@@ -118,7 +162,13 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       colors,
       top,
       pants,
+      shortDescription: infoProduct.shortDescription,
+      fitSummary: infoProduct.fitSummary,
+      careInstructions: infoProduct.careInstructions,
+      fabricName: infoProduct.fabricType?.name ?? null,
+      fabricDescription: infoProduct.fabricType?.description ?? null,
     },
+    wearWith: wearWithRows.map(serializeProductForCard)[0] ?? null,
     cloudName: process.env.CLOUDINARY_CLOUD_NAME,
     initialColor:
       (requested && colors.some((color) => color.name === requested) ? requested : null) ??
@@ -139,7 +189,7 @@ function sizesFor(piece: Piece, color: string | null) {
 }
 
 export default function SetDetail({ loaderData }: Route.ComponentProps) {
-  const { set, cloudName, initialColor } = loaderData;
+  const { set, cloudName, initialColor, wearWith } = loaderData;
   const addSet = useCart((state) => state.addSet);
   const [searchParams, setSearchParams] = useSearchParams();
   const [topSize, setTopSize] = useState<string | null>(null);
@@ -264,6 +314,10 @@ export default function SetDetail({ loaderData }: Route.ComponentProps) {
     .split("•")
     .map((line) => line.trim())
     .filter(Boolean);
+
+  const ctaStyle = ctaFromHex(
+    set.colors.find((color) => color.name === selectedColor)?.hex
+  );
 
   return (
     <>
@@ -395,9 +449,10 @@ export default function SetDetail({ loaderData }: Route.ComponentProps) {
                   type="button"
                   onClick={handleAdd}
                   disabled={!canAdd}
+                  style={ctaStyle}
                   className={cn(
-                    "h-14 flex-1 text-[13px] font-semibold uppercase tracking-[0.16em] text-white",
-                    canAdd ? "bg-charcoal hover:bg-charcoal/90" : "bg-[#6f2f3a]"
+                    "h-14 flex-1 text-[13px] font-semibold uppercase tracking-[0.16em] transition-opacity",
+                    !canAdd && "opacity-90"
                   )}
                 >
                   {addLabel}
@@ -410,15 +465,79 @@ export default function SetDetail({ loaderData }: Route.ComponentProps) {
                 </Link>
               </p>
 
-              {detailLines.length > 0 && (
-                <ul className="mt-10 space-y-2 border-t border-charcoal/10 pt-8 text-[14px] text-charcoal/75">
-                  {detailLines.map((line) => (
-                    <li key={line}>{line}</li>
-                  ))}
-                </ul>
-              )}
+              <ProductInfoTabs
+                intro={`Built for long shifts — the ${set.name} set pairs a soft stretch scrub top and pants with pockets that actually hold what you carry.`}
+                features={detailLines}
+                fitSummary={set.fitSummary}
+                lengthGuide={DEFAULT_LENGTH_GUIDE}
+                fabricName={set.fabricName}
+                fabricDescription={set.fabricDescription}
+                careInstructions={set.careInstructions}
+                onOpenSizeChart={() => setChartOpen(true)}
+              />
             </div>
           </div>
+
+          {wearWith && (
+            <section className="mt-8 border-t border-charcoal/10 pt-12 lg:mt-14">
+              <h2 className="mb-8 text-2xl font-semibold tracking-tight text-charcoal">
+                Wear it with
+              </h2>
+              <div className="grid gap-8 md:grid-cols-[12rem_minmax(0,1fr)] md:items-start">
+                <Link to={`/products/${wearWith.slug}`} className="bg-[#f6f6f4]">
+                  {wearWith.imagePublicId ? (
+                    <img
+                      src={imageSrc(wearWith.imagePublicId, 480)}
+                      alt={wearWith.imageAlt ?? wearWith.name}
+                      className="aspect-3/4 w-full object-contain"
+                    />
+                  ) : (
+                    <div className="aspect-3/4 w-full bg-[#f6f6f4]" aria-hidden />
+                  )}
+                </Link>
+                <div>
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <Link
+                        to={`/products/${wearWith.slug}`}
+                        className="text-[15px] font-medium text-charcoal"
+                      >
+                        {wearWith.name}
+                      </Link>
+                      <p className="mt-1 text-[13px] text-charcoal/50">
+                        {formatCurrency(wearWith.basePrice)}
+                      </p>
+                    </div>
+                    <Link
+                      to={`/products/${wearWith.slug}`}
+                      className="hidden h-12 shrink-0 items-center bg-charcoal px-6 text-[12px] font-semibold uppercase tracking-[0.14em] text-white sm:inline-flex"
+                    >
+                      Shop this style
+                    </Link>
+                  </div>
+                  {wearWith.colors.length > 0 && (
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      {wearWith.colors.slice(0, 10).map((color) => (
+                        <Link
+                          key={color.name}
+                          to={`/products/${wearWith.slug}?color=${encodeURIComponent(color.name)}`}
+                          className="size-6 rounded-full border border-black/10"
+                          style={{ backgroundColor: color.hex }}
+                          title={color.name}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  <Link
+                    to={`/products/${wearWith.slug}`}
+                    className="mt-6 flex h-12 items-center justify-center border border-charcoal text-[13px] font-semibold uppercase tracking-[0.14em] sm:hidden"
+                  >
+                    Shop this style
+                  </Link>
+                </div>
+              </div>
+            </section>
+          )}
         </div>
       </div>
 
@@ -427,9 +546,10 @@ export default function SetDetail({ loaderData }: Route.ComponentProps) {
           type="button"
           onClick={handleAdd}
           disabled={!canAdd}
+          style={ctaStyle}
           className={cn(
-            "h-12 w-full text-[12px] font-semibold uppercase tracking-[0.14em] text-white",
-            canAdd ? "bg-charcoal" : "bg-[#6f2f3a]"
+            "h-12 w-full text-[12px] font-semibold uppercase tracking-[0.14em] transition-opacity",
+            !canAdd && "opacity-90"
           )}
         >
           {addLabel}

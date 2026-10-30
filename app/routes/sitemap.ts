@@ -22,6 +22,7 @@ export async function loader({}: Route.LoaderArgs) {
     "/shop/bundles",
     "/blog",
     "/about",
+    "/shiftknit",
     "/faq",
     "/contact",
     "/size-chart",

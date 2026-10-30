@@ -3,7 +3,12 @@ import { Form, Link } from "react-router";
 import { Star } from "lucide-react";
 import { Button } from "~/components/ui/Button";
 import { Input, Textarea } from "~/components/ui/Input";
+import { CATALOG_LENGTHS, CATALOG_SIZES } from "~/lib/product-catalog";
+import { REVIEW_FIT_OPTIONS } from "~/lib/reviews";
 import { cn } from "~/lib/utils";
+
+const fieldClass =
+  "h-11 w-full border border-charcoal/15 bg-white px-3 text-sm text-charcoal outline-none focus:border-navy";
 
 export function ReviewForm({
   defaultName,
@@ -54,7 +59,9 @@ export function ReviewForm({
                 <Star
                   size={22}
                   className={cn(
-                    value <= rating ? "fill-terracotta text-terracotta" : "text-charcoal/20"
+                    value <= rating
+                      ? "fill-charcoal text-charcoal"
+                      : "text-charcoal/20"
                   )}
                 />
               </button>
@@ -82,6 +89,50 @@ export function ReviewForm({
         placeholder="Share how it fits, feels, and holds up on shift."
       />
 
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="block space-y-1.5 text-sm">
+          <span className="font-medium text-charcoal">Size purchased</span>
+          <select name="sizePurchased" className={fieldClass} defaultValue="">
+            <option value="">Select size</option>
+            {CATALOG_SIZES.map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block space-y-1.5 text-sm">
+          <span className="font-medium text-charcoal">Length purchased</span>
+          <select name="lengthPurchased" className={fieldClass} defaultValue="">
+            <option value="">Select length</option>
+            {CATALOG_LENGTHS.map((length) => (
+              <option key={length} value={length}>
+                {length}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Input label="Height" name="height" maxLength={40} placeholder="170–175 cm" />
+        <Input label="Weight" name="weight" maxLength={40} placeholder="145 lb" />
+        <Input
+          label="Occupation"
+          name="occupation"
+          maxLength={80}
+          placeholder="RN, Physician…"
+        />
+        <label className="block space-y-1.5 text-sm">
+          <span className="font-medium text-charcoal">Fit</span>
+          <select name="fit" className={fieldClass} defaultValue="">
+            <option value="">How did it fit?</option>
+            {REVIEW_FIT_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
       {error && (
         <p className="text-sm text-red-700" role="alert">
           {error}
@@ -91,7 +142,9 @@ export function ReviewForm({
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit">Submit review</Button>
         {isSignedIn && verifiedPurchase && (
-          <p className="text-xs text-charcoal/55">This will publish as a verified purchase.</p>
+          <p className="text-xs text-charcoal/55">
+            This will publish as a verified purchase.
+          </p>
         )}
         {!isSignedIn && (
           <p className="text-xs text-charcoal/55">
