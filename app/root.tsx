@@ -10,7 +10,15 @@ import type { Route } from "./+types/root";
 import { NotFoundPage } from "~/components/storefront/NotFoundPage";
 import "./app.css";
 
+// Cache-bust so browsers don't keep an old React Router / Vite default tab icon.
+const FAVICON = "/favicon.png?v=3";
+
 export const links: Route.LinksFunction = () => [
+  // Declare the brand icon explicitly. Without this, some navigations/assets fall
+  // back to whatever the browser last cached as /favicon.ico (often the RR default).
+  { rel: "icon", href: FAVICON, type: "image/png" },
+  { rel: "shortcut icon", href: FAVICON, type: "image/png" },
+  { rel: "apple-touch-icon", href: "/apple-touch-icon.png?v=3" },
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
   {
     rel: "preconnect",
@@ -33,6 +41,7 @@ export function meta(): Route.MetaDescriptors {
       content:
         "Soft, stretch scrubs with pockets that actually hold what you carry. Canadian made. Free Shift Drop in Halifax.",
     },
+    { name: "theme-color", content: "#1d4e78" },
   ];
 }
 
@@ -42,6 +51,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        {/* Hardcoded early so the brand icon wins before route links hydrate. */}
+        <link rel="icon" href={FAVICON} type="image/png" />
         <Meta />
         <Links />
       </head>

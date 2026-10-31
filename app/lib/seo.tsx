@@ -44,7 +44,7 @@ export function organizationJsonLd() {
     "@type": "Organization",
     name: "shiftshappn",
     url: appUrl,
-    logo: `${appUrl}/logo.png`,
+    logo: `${appUrl}/images/logo.png`,
     description:
       "Premium Canadian medical scrubs designed for healthcare professionals.",
     address: {
