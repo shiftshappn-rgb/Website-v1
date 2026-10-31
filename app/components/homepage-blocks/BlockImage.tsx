@@ -1,3 +1,4 @@
+import { cloudinaryImageUrl, cloudinarySrcSet } from "~/lib/cloudinary";
 import { cn } from "~/lib/utils";
 
 export function getCloudinaryUrl(
@@ -5,16 +6,7 @@ export function getCloudinaryUrl(
   width: number,
   cloudName?: string
 ): string | null {
-  if (!publicId) return null;
-  if (
-    publicId.startsWith("/") ||
-    publicId.startsWith("http://") ||
-    publicId.startsWith("https://")
-  ) {
-    return publicId;
-  }
-  if (!cloudName) return null;
-  return `https://res.cloudinary.com/${cloudName}/image/upload/f_auto,q_auto,w_${width}/${publicId}`;
+  return cloudinaryImageUrl(publicId, cloudName, width);
 }
 
 export function BlockImage({
@@ -24,6 +16,7 @@ export function BlockImage({
   cloudName,
   className,
   placeholderClassName,
+  priority = false,
 }: {
   publicId?: string;
   alt?: string;
@@ -31,8 +24,18 @@ export function BlockImage({
   cloudName?: string;
   className?: string;
   placeholderClassName?: string;
+  priority?: boolean;
 }) {
   const url = publicId ? getCloudinaryUrl(publicId, width, cloudName) : null;
+  const srcSet = publicId
+    ? cloudinarySrcSet(
+        publicId,
+        cloudName,
+        [Math.round(width * 0.5), width, Math.round(width * 1.5)].filter(
+          (value, index, all) => value > 0 && all.indexOf(value) === index
+        )
+      )
+    : null;
 
   if (!url) {
     return (
@@ -46,9 +49,12 @@ export function BlockImage({
   return (
     <img
       src={url}
+      srcSet={srcSet ?? undefined}
+      sizes={srcSet ? `(max-width: 768px) 100vw, ${width}px` : undefined}
       alt={alt}
       className={className}
-      loading="lazy"
+      loading={priority ? "eager" : "lazy"}
+      fetchPriority={priority ? "high" : "auto"}
       decoding="async"
     />
   );

@@ -13,7 +13,7 @@ export type BundleCardData = {
 };
 
 export type PackShowcaseItem = {
-  kind: "set" | "extra";
+  kind: "primary" | "extra" | "set";
   name: string;
   imagePublicId?: string;
 };

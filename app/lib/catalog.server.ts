@@ -269,8 +269,18 @@ export async function loadProductsByCollectionSlugs(slugs: string[]) {
 export async function loadSetCardsBySlugs(slugs: string[]) {
   const db = tryDb();
   if (!db || slugs.length === 0) return [] as ProductCardData[];
-  const sets = await loadSetCards(db);
-  const bySlug = new Map(sets.map((set) => [set.card.slug, set.card]));
+
+  const unique = [...new Set(slugs)];
+  const bundles = await db.bundle.findMany({
+    where: { slug: { in: unique } },
+    select: setListSelect,
+  });
+  const bySlug = new Map(
+    bundles.flatMap((bundle) => {
+      const card = toSetCard(bundle);
+      return card ? [[card.card.slug, card.card] as const] : [];
+    })
+  );
   return slugs
     .map((slug) => bySlug.get(slug))
     .filter((card): card is ProductCardData => card != null);
@@ -281,11 +291,7 @@ export async function loadProductGridBlockProducts(content: {
   collectionSlug?: string;
 }) {
   if (content.productSlugs?.length) {
-    const sets = await loadSetCardsBySlugs(content.productSlugs);
-    const found = new Set(sets.map((set) => set.slug));
-    const rest = content.productSlugs.filter((slug) => !found.has(slug));
-    const products = rest.length ? await loadProductsBySlugs(rest) : [];
-    const bySlug = new Map([...sets, ...products].map((item) => [item.slug, item]));
+    const bySlug = await resolveProductOrSetCardsBySlugs(content.productSlugs);
     return content.productSlugs
       .map((slug) => bySlug.get(slug))
       .filter((item): item is ProductCardData => item != null);
@@ -294,6 +300,60 @@ export async function loadProductGridBlockProducts(content: {
     return loadCollectionProducts(content.collectionSlug);
   }
   return [] as ProductCardData[];
+}
+
+/** One batched lookup for many homepage product grids (avoids N full catalog scans). */
+export async function loadProductGridsByBlockId(
+  blocks: Array<{ id: string; type: string; content: Record<string, unknown> }>
+) {
+  const grids = blocks.filter((block) => block.type === "productGrid");
+  if (grids.length === 0) return {} as Record<string, ProductCardData[]>;
+
+  const slugBlocks: Array<{ id: string; slugs: string[] }> = [];
+  const collectionBlocks: Array<{ id: string; collectionSlug: string }> = [];
+
+  for (const block of grids) {
+    const content = block.content as {
+      productSlugs?: string[];
+      collectionSlug?: string;
+    };
+    if (content.productSlugs?.length) {
+      slugBlocks.push({ id: block.id, slugs: content.productSlugs });
+    } else if (content.collectionSlug) {
+      collectionBlocks.push({ id: block.id, collectionSlug: content.collectionSlug });
+    }
+  }
+
+  const allSlugs = [...new Set(slugBlocks.flatMap((block) => block.slugs))];
+  const [bySlug, collectionResults] = await Promise.all([
+    resolveProductOrSetCardsBySlugs(allSlugs),
+    Promise.all(
+      collectionBlocks.map(async (block) => ({
+        id: block.id,
+        products: await loadCollectionProducts(block.collectionSlug),
+      }))
+    ),
+  ]);
+
+  const result: Record<string, ProductCardData[]> = {};
+  for (const block of slugBlocks) {
+    result[block.id] = block.slugs
+      .map((slug) => bySlug.get(slug))
+      .filter((item): item is ProductCardData => item != null);
+  }
+  for (const entry of collectionResults) {
+    result[entry.id] = entry.products;
+  }
+  return result;
+}
+
+async function resolveProductOrSetCardsBySlugs(slugs: string[]) {
+  if (slugs.length === 0) return new Map<string, ProductCardData>();
+  const sets = await loadSetCardsBySlugs(slugs);
+  const found = new Set(sets.map((set) => set.slug));
+  const rest = [...new Set(slugs.filter((slug) => !found.has(slug)))];
+  const products = rest.length ? await loadProductsBySlugs(rest) : [];
+  return new Map([...sets, ...products].map((item) => [item.slug, item]));
 }
 
 export async function loadProductsBySlugs(slugs: string[]) {

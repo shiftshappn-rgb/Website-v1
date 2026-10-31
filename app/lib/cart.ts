@@ -156,7 +156,7 @@ export const useCart = create<CartState>()(
 
       addPack: (lines) => {
         const groupId = lines[0]?.packGroupId;
-        if (!groupId || lines.length < 2) return;
+        if (!groupId || lines.length < 1) return;
         const added = lines[0].quantity ?? 1;
         set((state) => {
           const existing = state.items.some((item) => item.packGroupId === groupId);

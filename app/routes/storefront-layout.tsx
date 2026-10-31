@@ -3,33 +3,39 @@ import type { Route } from "./+types/storefront-layout";
 import { NavigationProgress } from "~/components/NavigationProgress";
 import { NotFoundPage } from "~/components/storefront/NotFoundPage";
 import { OfferBanner } from "~/components/storefront/OfferBanner";
-import { Navbar, Footer } from "~/components/storefront/Navbar";
+import { Footer } from "~/components/storefront/Footer";
+import { Navbar } from "~/components/storefront/Navbar";
 import { tryDb } from "~/db.server";
 import { getActiveMonthlyOffer } from "~/lib/commerce.server";
+import { getCustomerNav } from "~/lib/session.server";
 import { cn } from "~/lib/utils";
 
-export async function loader({}: Route.LoaderArgs) {
+export async function loader({ request }: Route.LoaderArgs) {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME ?? null;
   const db = tryDb();
-  if (!db) {
-    return { offer: null };
-  }
 
-  try {
-    const offer = await getActiveMonthlyOffer(db);
-    return {
-      offer: offer
-        ? {
-            title: offer.title,
-            subtitle: offer.subtitle,
-            ctaLabel: offer.ctaLabel,
-            ctaHref: offer.ctaHref,
-            discountCode: offer.discountCode,
-          }
-        : null,
-    };
-  } catch {
-    return { offer: null };
-  }
+  const [customer, offer] = await Promise.all([
+    getCustomerNav(request).catch(() => null),
+    db
+      ? getActiveMonthlyOffer(db).catch(() => null)
+      : Promise.resolve(null),
+  ]);
+
+  return {
+    cloudName,
+    customer: customer
+      ? { id: customer.id, name: customer.name, email: customer.email }
+      : null,
+    offer: offer
+      ? {
+          title: offer.title,
+          subtitle: offer.subtitle,
+          ctaLabel: offer.ctaLabel,
+          ctaHref: offer.ctaHref,
+          discountCode: offer.discountCode,
+        }
+      : null,
+  };
 }
 
 export default function StorefrontLayout({ loaderData }: Route.ComponentProps) {
@@ -49,7 +55,7 @@ export default function StorefrontLayout({ loaderData }: Route.ComponentProps) {
           discountCode={offer.discountCode}
         />
       )}
-      <Navbar />
+      <Navbar cloudName={loaderData.cloudName} customer={loaderData.customer} />
       <main
         id="main-content"
         className={cn(

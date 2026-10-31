@@ -40,6 +40,10 @@ export function getVariantLabel(
   size: string,
   length?: string | null
 ): string {
+  // Keep cart labels clean for the accessory default SKU.
+  if (colorName === "Default" && size === "One Size") {
+    return length ? `One Size / ${length}` : "One Size";
+  }
   return length ? `${colorName} / ${size} / ${length}` : `${colorName} / ${size}`;
 }
 
@@ -69,14 +73,18 @@ export function parseVariantImages(images: unknown): VariantImage[] {
   return result.sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
+const CARD_IMAGE_LIMIT = 6;
+
 export function collectCardImages(
   groups: Array<Array<{ images: unknown }>>,
-  fallbackAlt: string
+  fallbackAlt: string,
+  limit = CARD_IMAGE_LIMIT
 ) {
   const seen = new Set<string>();
   const images: Array<{ publicId: string; alt: string }> = [];
 
   function add(image: VariantImage) {
+    if (images.length >= limit) return;
     if (seen.has(image.publicId)) return;
     seen.add(image.publicId);
     images.push({ publicId: image.publicId, alt: image.altText || fallbackAlt });
@@ -86,11 +94,15 @@ export function collectCardImages(
   for (const list of parsed) {
     for (const variantImages of list) {
       if (variantImages[0]) add(variantImages[0]);
+      if (images.length >= limit) return images;
     }
   }
   for (const list of parsed) {
     for (const variantImages of list) {
-      variantImages.slice(1).forEach(add);
+      for (const image of variantImages.slice(1)) {
+        add(image);
+        if (images.length >= limit) return images;
+      }
     }
   }
   return images;

@@ -4,6 +4,13 @@ import { Button } from "~/components/ui/Button";
 import { Input, Select, Textarea } from "~/components/ui/Input";
 import { DatabaseUnavailable } from "~/components/admin/DatabaseUnavailable";
 import { db, isDatabaseAvailable } from "~/db.server";
+import {
+  ACCESSORY_DEFAULT_COLOR,
+  ACCESSORY_DEFAULT_COLOR_HEX,
+  ACCESSORY_DEFAULT_SIZE,
+  isAccessoriesCategory,
+} from "~/lib/accessories";
+import { buildVariantSku } from "~/lib/product-catalog";
 import { slugify } from "~/lib/utils";
 import { requireAdmin } from "~/lib/session.server";
 import type { ProductStatus } from "@prisma/client";
@@ -66,6 +73,13 @@ export async function action({ request }: Route.ActionArgs) {
     return { error: "A product with this slug already exists." };
   }
 
+  const category = categoryId
+    ? await db.category.findUnique({
+        where: { id: categoryId },
+        select: { slug: true },
+      })
+    : null;
+
   const product = await db.product.create({
     data: {
       name,
@@ -83,7 +97,25 @@ export async function action({ request }: Route.ActionArgs) {
       fitSummary,
       careInstructions,
       lengthGuide,
-      offerLengths,
+      offerLengths: isAccessoriesCategory(category) ? false : offerLengths,
+      ...(isAccessoriesCategory(category)
+        ? {
+            variants: {
+              create: {
+                colorName: ACCESSORY_DEFAULT_COLOR,
+                colorHex: ACCESSORY_DEFAULT_COLOR_HEX,
+                size: ACCESSORY_DEFAULT_SIZE,
+                sku: buildVariantSku(
+                  slug,
+                  ACCESSORY_DEFAULT_COLOR,
+                  ACCESSORY_DEFAULT_SIZE
+                ),
+                inventoryQty: 0,
+                images: [],
+              },
+            },
+          }
+        : {}),
     },
   });
 

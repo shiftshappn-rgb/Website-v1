@@ -96,15 +96,17 @@ export default function GiftCards({ loaderData }: Route.ComponentProps) {
 
   return (
     <div className="bg-sand">
-      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
-        <div className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-start">
-          <GiftCardPreview amount={amount} />
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-14">
+        <div className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-start lg:gap-10">
+          <div className="mx-auto w-full max-w-md lg:mx-0 lg:max-w-none">
+            <GiftCardPreview amount={amount} />
+          </div>
 
-          <div className="lg:pt-6">
+          <div className="min-w-0 lg:pt-6">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-charcoal/50">
               shiftshappn
             </p>
-            <h1 className="mt-2 font-serif text-3xl text-navy lg:text-4xl">
+            <h1 className="mt-2 font-serif text-[1.75rem] leading-tight text-navy sm:text-3xl lg:text-4xl">
               ShiftsHappn e-gift card
             </h1>
             <p className="mt-3 text-2xl font-medium text-charcoal">

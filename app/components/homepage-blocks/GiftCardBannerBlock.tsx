@@ -15,12 +15,12 @@ export function GiftCardBannerBlock({
 
   return (
     <section ref={revealRef} className="bg-sand px-4 py-8 sm:px-10 lg:px-14 lg:py-10">
-      <div className="mx-auto grid max-w-[1800px] gap-8 overflow-hidden rounded-[1.75rem] bg-sky/10 p-6 sm:grid-cols-[0.9fr_1.1fr] sm:p-8 lg:rounded-[2.25rem] lg:p-10">
+      <div className="mx-auto grid max-w-[1800px] gap-6 overflow-hidden rounded-[1.5rem] bg-sky/10 p-5 sm:grid-cols-[0.9fr_1.1fr] sm:gap-8 sm:rounded-[1.75rem] sm:p-8 lg:rounded-[2.25rem] lg:p-10">
         <div className="animate-on-scroll from-left max-w-md">
           {content.badge && (
             <p className="kicker text-navy/70">{content.badge}</p>
           )}
-          <h2 className="mt-2 font-serif text-3xl text-navy lg:text-4xl">
+          <h2 className="mt-2 font-serif text-[1.75rem] leading-tight text-navy sm:text-3xl lg:text-4xl">
             {content.headline}
           </h2>
           {content.body && (
@@ -44,13 +44,13 @@ export function GiftCardBannerBlock({
 
           <Link
             to={content.ctaLink}
-            className="mt-6 inline-flex items-center justify-center rounded-full bg-navy px-6 py-3 text-sm font-semibold text-white transition-transform duration-200 hover:-translate-y-0.5"
+            className="mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-full bg-navy px-6 py-3 text-sm font-semibold text-white transition-transform duration-200 hover:-translate-y-0.5 sm:w-auto"
           >
             {content.ctaLabel}
           </Link>
         </div>
 
-        <div className="animate-on-scroll from-right mx-auto w-full max-w-xl sm:max-w-none">
+        <div className="animate-on-scroll from-right w-full min-w-0 max-w-full justify-self-center sm:max-w-none">
           <GiftCardFan amounts={fanAmounts} linkBase={content.ctaLink} />
         </div>
       </div>

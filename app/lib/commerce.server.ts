@@ -54,7 +54,12 @@ export async function resolveGiftCard(db: Db, code: string) {
   return { card };
 }
 
-export async function getActiveMonthlyOffer(db: Db) {
+type OfferRow = Awaited<ReturnType<typeof fetchActiveMonthlyOffer>>;
+
+let offerCache: { expiresAt: number; value: OfferRow } | null = null;
+const OFFER_CACHE_TTL_MS = 60_000;
+
+async function fetchActiveMonthlyOffer(db: Db) {
   const now = new Date();
   return db.monthlyOffer.findFirst({
     where: {
@@ -64,4 +69,14 @@ export async function getActiveMonthlyOffer(db: Db) {
     },
     orderBy: { startsAt: "desc" },
   });
+}
+
+export async function getActiveMonthlyOffer(db: Db) {
+  const now = Date.now();
+  if (offerCache && offerCache.expiresAt > now) {
+    return offerCache.value;
+  }
+  const value = await fetchActiveMonthlyOffer(db);
+  offerCache = { expiresAt: now + OFFER_CACHE_TTL_MS, value };
+  return value;
 }

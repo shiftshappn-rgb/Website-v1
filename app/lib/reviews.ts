@@ -51,6 +51,22 @@ function optionalTrim(
   return trimmed.slice(0, max);
 }
 
+/** Collapse mirrored set reviews (same author + body) into one card. */
+export function dedupeReviews<T extends {
+  customerName: string;
+  rating: number;
+  title: string | null;
+  body: string;
+}>(reviews: T[]): T[] {
+  const seen = new Set<string>();
+  return reviews.filter((review) => {
+    const key = `${review.customerName}\0${review.rating}\0${review.title ?? ""}\0${review.body}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function serializeReview(review: {
   id: string;
   customerName: string;

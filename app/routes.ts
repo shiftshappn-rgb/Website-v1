@@ -60,6 +60,7 @@ export default [
   ]),
   route("checkout/success", "routes/checkout-success.tsx"),
   route("api/checkout", "routes/api-checkout.ts"),
+  route("api/search", "routes/api-search.ts"),
   route("api/webhook", "routes/api-webhook.ts"),
   route("sitemap.xml", "routes/sitemap.ts"),
   route("robots.txt", "routes/robots.ts"),
@@ -81,7 +82,11 @@ export default [
       route("categories", "routes/admin-categories.tsx"),
       route("colors", "routes/admin-colors.tsx"),
       route("collections", "routes/admin-collections.tsx"),
-      route("packs", "routes/admin-packs.tsx"),
+      ...prefix("packs", [
+        index("routes/admin-packs-index.tsx"),
+        route("new", "routes/admin-packs-new.tsx"),
+        route(":id", "routes/admin-packs-edit.tsx"),
+      ]),
       ...prefix("orders", [
         index("routes/admin-orders-index.tsx"),
         route(":id", "routes/admin-orders-detail.tsx"),

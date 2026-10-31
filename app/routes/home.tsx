@@ -6,13 +6,14 @@ import type {
   ProductSummary,
 } from "~/components/homepage-blocks/types";
 import { isDatabaseAvailable, tryDb } from "~/db.server";
-import { loadProductGridBlockProducts } from "~/lib/catalog.server";
+import { loadProductGridsByBlockId } from "~/lib/catalog.server";
 import {
   demoHomepageBlocks,
   demoProducts,
 } from "~/lib/demo-data.server";
 import type { PackShowcaseSummary } from "~/lib/packs";
 import { loadPackShowcaseBySlugs } from "~/lib/packs.server";
+import { catalogHeaders } from "~/lib/http-cache";
 import { buildMeta, JsonLd, organizationJsonLd } from "~/lib/seo";
 
 export function meta(): Route.MetaDescriptors {
@@ -22,6 +23,10 @@ export function meta(): Route.MetaDescriptors {
       "Soft, stretch scrubs with pockets that actually hold what you carry. Canadian made. Free Shift Drop in Halifax.",
     path: "/",
   });
+}
+
+export function headers() {
+  return catalogHeaders();
 }
 
 function toProductSummary(product: (typeof demoProducts)[number]): ProductSummary {
@@ -62,20 +67,6 @@ function demoProductsForGrid(content: ProductGridContent): ProductSummary[] {
       .filter((product): product is ProductSummary => product != null);
   }
   return all;
-}
-
-async function loadProductsByBlockId(
-  blocks: Array<{ id: string; type: string; content: Record<string, unknown> }>
-) {
-  const productGridBlocks = blocks.filter((block) => block.type === "productGrid");
-  const entries = await Promise.all(
-    productGridBlocks.map(async (block) => {
-      const content = block.content as unknown as ProductGridContent;
-      const products = await loadProductGridBlockProducts(content);
-      return [block.id, products] as const;
-    })
-  );
-  return Object.fromEntries(entries) as Record<string, ProductSummary[]>;
 }
 
 async function loadPacksByBlockId(
@@ -137,7 +128,7 @@ export async function loader() {
   }));
 
   const [productsByBlockId, packsByBlockId] = await Promise.all([
-    loadProductsByBlockId(mappedBlocks),
+    loadProductGridsByBlockId(mappedBlocks),
     loadPacksByBlockId(mappedBlocks),
   ]);
 
@@ -158,7 +149,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       <BlockRenderer
         blocks={blocks}
         cloudName={cloudName}
-        productsByBlockId={productsByBlockId}
+        productsByBlockId={productsByBlockId as Record<string, ProductSummary[]>}
         packsByBlockId={packsByBlockId}
       />
     </>
