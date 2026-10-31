@@ -61,6 +61,8 @@ export function ProductGallery({
                 <img
                   src={imageSrc(image.publicId, 200)}
                   alt=""
+                  loading="lazy"
+                  decoding="async"
                   className="h-full w-full object-cover object-top"
                 />
               </button>
@@ -73,8 +75,12 @@ export function ProductGallery({
         <div className="aspect-3/4">
           {current ? (
             <img
-              src={imageSrc(current.publicId, 1200)}
+              src={imageSrc(current.publicId, 900)}
+              srcSet={`${imageSrc(current.publicId, 600)} 600w, ${imageSrc(current.publicId, 900)} 900w, ${imageSrc(current.publicId, 1200)} 1200w`}
+              sizes="(max-width: 768px) 100vw, 50vw"
               alt={current.altText || alt}
+              fetchPriority="high"
+              decoding="async"
               className="h-full w-full object-contain object-center"
             />
           ) : (

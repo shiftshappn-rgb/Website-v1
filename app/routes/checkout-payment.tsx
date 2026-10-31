@@ -1,6 +1,7 @@
 import { data, redirect, Link } from "react-router";
 import { useState } from "react";
 import type { Route } from "./+types/checkout-payment";
+import { OrderLineGroups } from "~/components/storefront/OrderLineGroups";
 import { useCheckout } from "~/lib/checkout-context";
 import type { CartItem } from "~/lib/checkout-context";
 import { useCart } from "~/lib/cart";
@@ -9,7 +10,9 @@ import { Button } from "~/components/ui/shadcn-button";
 import { tryDb } from "~/db.server";
 import { generateGiftCardCode } from "~/lib/commerce.server";
 import { sendGiftCardEmail } from "~/lib/email.server";
+import { checkoutSuccessPath } from "~/lib/order-access.server";
 import { deliverOrderConfirmation, recordPaidOrder } from "~/lib/paid-order.server";
+import { getCustomer } from "~/lib/session.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   return {};
@@ -43,6 +46,10 @@ export async function action({ request }: Route.ActionArgs) {
     );
   }
 
+  // Never trust client-supplied customerId — session only.
+  const sessionCustomer = await getCustomer(request);
+  const customerId = sessionCustomer?.id ?? null;
+
   const { subtotal = 0, discountAmount = 0, giftCardAmount = 0 } = phase1;
   const shippingCost = phase2.shippingCost ?? 0;
   const merchandise = Math.max(0, subtotal - discountAmount - giftCardAmount);
@@ -69,7 +76,7 @@ export async function action({ request }: Route.ActionArgs) {
     const { order } = await recordPaidOrder(db, {
       orderNumber,
       email: phase1.email,
-      customerId: phase1.customerId ?? null,
+      customerId,
       subtotal,
       shipping: shippingCost,
       tax,
@@ -112,19 +119,16 @@ export async function action({ request }: Route.ActionArgs) {
     }
 
     const hasProducts = cartItems.some((item: CartItem) => item.kind !== "gift_card");
-    if (phase1.email && hasProducts) {
+    if (customerId && hasProducts) {
       const points = Math.max(0, Math.floor(subtotal));
-      const customer = phase1.customerId
-        ? await db.customer.findUnique({ where: { id: phase1.customerId } })
-        : await db.customer.findUnique({ where: { email: String(phase1.email) } });
-      if (customer && points > 0) {
+      if (points > 0) {
         await db.customer.update({
-          where: { id: customer.id },
+          where: { id: customerId },
           data: { loyaltyPoints: { increment: points } },
         });
         await db.loyaltyLedger.create({
           data: {
-            customerId: customer.id,
+            customerId,
             points,
             reason: `Order ${order.orderNumber}`,
             orderId: order.id,
@@ -166,19 +170,12 @@ export async function action({ request }: Route.ActionArgs) {
       }
     }
 
-    if (formData.get("marketingOptIn") === "on") {
+    if (formData.get("marketingOptIn") === "on" && customerId) {
       try {
-        if (phase1.customerId) {
-          await db.customer.update({
-            where: { id: phase1.customerId },
-            data: { marketingOptIn: true },
-          });
-        } else if (phase1.email) {
-          await db.customer.updateMany({
-            where: { email: String(phase1.email) },
-            data: { marketingOptIn: true },
-          });
-        }
+        await db.customer.update({
+          where: { id: customerId },
+          data: { marketingOptIn: true },
+        });
       } catch (error) {
         console.error("Marketing opt-in update failed:", error);
       }
@@ -189,32 +186,11 @@ export async function action({ request }: Route.ActionArgs) {
       console.error("Order follow-up failed:", error);
     }
 
-    return redirect(`/checkout/success?session_id=${order.orderNumber}`);
+    return redirect(checkoutSuccessPath(order.orderNumber));
   } catch (error) {
     console.error("Order creation error:", error);
     return data({ error: "Failed to place order. Please try again." }, { status: 500 });
   }
-}
-
-// ── Line Item Row ──────────────────────────────────────────────────────────────
-function LineItem({ item }: { item: CartItem }) {
-  return (
-    <div className="flex items-center gap-3 py-3 border-b border-[#f0ece6] last:border-0">
-      <div
-        className="size-10 rounded-lg flex-shrink-0 flex items-center justify-center text-white text-xs font-bold"
-        style={{ backgroundColor: item.colorHex || "#1b2a4a" }}
-      >
-        {item.kind === "gift_card" ? "🎁" : item.quantity > 1 ? `×${item.quantity}` : ""}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-[#1b2a4a] truncate">{item.productName}</p>
-        <p className="text-xs text-[#888]">{item.variantLabel}</p>
-      </div>
-      <span className="text-sm font-semibold text-[#1b2a4a] tabular-nums">
-        {formatCurrency(item.price * item.quantity)}
-      </span>
-    </div>
-  );
 }
 
 // ── Totals Row ─────────────────────────────────────────────────────────────────
@@ -463,8 +439,16 @@ export default function CheckoutPhase3() {
           <div className="px-6 py-4 border-b border-[#e5e0d8]">
             <h3 className="font-serif text-sm font-semibold text-[#1b2a4a]">Order Summary</h3>
           </div>
-          <div className="px-6 py-2">
-            {lineItems.map((item) => <LineItem key={item.variantId} item={item} />)}
+          <div className="px-6 py-4">
+            <OrderLineGroups
+              items={lineItems.map((item) => ({
+                productName: item.productName,
+                variantLabel: item.variantLabel,
+                quantity: item.quantity,
+                priceAtPurchase: item.price,
+              }))}
+              className="space-y-4"
+            />
           </div>
           <div className="px-6 py-4 bg-[#faf8f5] border-t border-[#e5e0d8] space-y-2">
             <TotalsRow label="Subtotal" value={formatCurrency(subtotal)} />

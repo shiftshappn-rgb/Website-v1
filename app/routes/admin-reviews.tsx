@@ -4,12 +4,17 @@ import { Badge, Card } from "~/components/ui/Badge";
 import { Button } from "~/components/ui/Button";
 import { DatabaseUnavailable } from "~/components/admin/DatabaseUnavailable";
 import { db, isDatabaseAvailable } from "~/db.server";
+import {
+  getSetsForProduct,
+  getSharedReviewProductIds,
+} from "~/lib/review-products.server";
 import { parseReviewPhotos } from "~/lib/reviews";
 import { requireAdmin } from "~/lib/session.server";
 import { cn } from "~/lib/utils";
 import type { ReviewStatus } from "@prisma/client";
 
 const STATUSES = ["all", "pending", "approved", "rejected"] as const;
+const PAGE_SIZE = 10;
 
 export async function loader({ request }: Route.LoaderArgs) {
   if (!isDatabaseAvailable()) {
@@ -18,25 +23,48 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   await requireAdmin(request);
 
-  const status = new URL(request.url).searchParams.get("status");
-  const reviews = await db.review.findMany({
-    where:
-      status && status !== "all" && ["pending", "approved", "rejected"].includes(status)
-        ? { status: status as ReviewStatus }
-        : undefined,
-    include: { product: { select: { name: true, slug: true } } },
-    orderBy: { createdAt: "desc" },
-  });
+  const url = new URL(request.url);
+  const status = url.searchParams.get("status");
+  const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10) || 1);
 
-  const [pendingCount, approvedCount, rejectedCount] = await Promise.all([
+  const where =
+    status && status !== "all" && ["pending", "approved", "rejected"].includes(status)
+      ? { status: status as ReviewStatus }
+      : undefined;
+
+  const [pendingCount, approvedCount, rejectedCount, filteredCount] = await Promise.all([
     db.review.count({ where: { status: "pending" } }),
     db.review.count({ where: { status: "approved" } }),
     db.review.count({ where: { status: "rejected" } }),
+    db.review.count({ where }),
   ]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredCount / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+
+  const reviews = await db.review.findMany({
+    where,
+    include: { product: { select: { id: true, name: true, slug: true } } },
+    orderBy: { createdAt: "desc" },
+    skip: (safePage - 1) * PAGE_SIZE,
+    take: PAGE_SIZE,
+  });
+
+  const setsByProductId = new Map<string, Array<{ name: string; slug: string }>>();
+  await Promise.all(
+    reviews.map(async (review) => {
+      if (setsByProductId.has(review.product.id)) return;
+      setsByProductId.set(review.product.id, await getSetsForProduct(db, review.product.id));
+    })
+  );
 
   return {
     dbAvailable: true as const,
     cloudName: process.env.CLOUDINARY_CLOUD_NAME ?? null,
+    page: safePage,
+    totalPages,
+    filteredCount,
+    pageSize: PAGE_SIZE,
     counts: {
       all: pendingCount + approvedCount + rejectedCount,
       pending: pendingCount,
@@ -45,8 +73,10 @@ export async function loader({ request }: Route.LoaderArgs) {
     },
     reviews: reviews.map((r) => ({
       id: r.id,
+      productId: r.product.id,
       productName: r.product.name,
       productSlug: r.product.slug,
+      sets: setsByProductId.get(r.product.id) ?? [],
       customerName: r.customerName,
       rating: r.rating,
       title: r.title,
@@ -65,6 +95,12 @@ export async function loader({ request }: Route.LoaderArgs) {
   };
 }
 
+function safeReviewsReturnTo(value: FormDataEntryValue | null) {
+  const raw = typeof value === "string" ? value : "";
+  if (raw.startsWith("/admin/reviews")) return raw;
+  return "/admin/reviews";
+}
+
 export async function action({ request }: Route.ActionArgs) {
   if (!isDatabaseAvailable()) {
     return { error: "Database is not configured." };
@@ -75,14 +111,29 @@ export async function action({ request }: Route.ActionArgs) {
   const formData = await request.formData();
   const id = String(formData.get("id") ?? "");
   const intent = String(formData.get("intent") ?? "update-status");
+  const returnTo = safeReviewsReturnTo(formData.get("returnTo"));
 
   if (!id) {
     return { error: "Invalid review action." };
   }
 
+  const review = await db.review.findUnique({ where: { id } });
+  if (!review) {
+    return { error: "Review not found." };
+  }
+
+  const sharedProductIds = await getSharedReviewProductIds(db, review.productId);
+  const mirrorWhere = {
+    productId: { in: sharedProductIds },
+    customerName: review.customerName,
+    rating: review.rating,
+    body: review.body,
+    title: review.title,
+  };
+
   if (intent === "delete") {
-    await db.review.delete({ where: { id } });
-    return redirect(request.headers.get("Referer") ?? "/admin/reviews");
+    await db.review.deleteMany({ where: mirrorWhere });
+    return redirect(returnTo);
   }
 
   const status = String(formData.get("status") ?? "") as ReviewStatus;
@@ -90,12 +141,13 @@ export async function action({ request }: Route.ActionArgs) {
     return { error: "Invalid review action." };
   }
 
-  await db.review.update({
-    where: { id },
+  // Keep mirrored set-piece reviews in the same status.
+  await db.review.updateMany({
+    where: mirrorWhere,
     data: { status },
   });
 
-  return redirect(request.headers.get("Referer") ?? "/admin/reviews");
+  return redirect(returnTo);
 }
 
 const statusVariant: Record<ReviewStatus, "default" | "success" | "warning" | "error"> = {
@@ -104,22 +156,34 @@ const statusVariant: Record<ReviewStatus, "default" | "success" | "warning" | "e
   rejected: "error",
 };
 
+function reviewsHref(status: string, page: number) {
+  const params = new URLSearchParams();
+  if (status !== "all") params.set("status", status);
+  if (page > 1) params.set("page", String(page));
+  const query = params.toString();
+  return query ? `/admin/reviews?${query}` : "/admin/reviews";
+}
+
 export default function AdminReviews({ loaderData, actionData }: Route.ComponentProps) {
   if (!loaderData.dbAvailable) {
     return <DatabaseUnavailable />;
   }
 
-  const { reviews, counts, cloudName } = loaderData;
+  const { reviews, counts, cloudName, page, totalPages, filteredCount, pageSize } = loaderData;
   const [params] = useSearchParams();
   const active = params.get("status") ?? "all";
+  const returnTo = reviewsHref(active, page);
+  const rangeStart = filteredCount === 0 ? 0 : (page - 1) * pageSize + 1;
+  const rangeEnd = Math.min(page * pageSize, filteredCount);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="font-serif text-2xl text-navy">Reviews</h1>
         <p className="mt-1 text-sm text-charcoal/60">
-          New storefront reviews land here as pending. Approve to publish them on the
-          product page.
+          Storefront reviews are loaded live from the database. New ones land here as
+          pending — approve to publish, or delete to remove permanently. Set reviews are
+          mirrored to top and pants; approving one updates both.
         </p>
       </div>
 
@@ -131,7 +195,7 @@ export default function AdminReviews({ loaderData, actionData }: Route.Component
         {STATUSES.map((status) => (
           <Link
             key={status}
-            to={status === "all" ? "/admin/reviews" : `/admin/reviews?status=${status}`}
+            to={reviewsHref(status, 1)}
             className={cn(
               "inline-flex min-h-11 items-center rounded-full px-4 text-sm capitalize",
               active === status
@@ -168,6 +232,24 @@ export default function AdminReviews({ loaderData, actionData }: Route.Component
                     >
                       {review.productName}
                     </Link>
+                    {review.sets.length > 0 ? (
+                      <>
+                        {" · "}
+                        {review.sets.map((set, index) => (
+                          <span key={set.slug}>
+                            {index > 0 ? ", " : null}
+                            <Link
+                              to={`/sets/${set.slug}`}
+                              className="hover:text-navy"
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {set.name} set
+                            </Link>
+                          </span>
+                        ))}
+                      </>
+                    ) : null}
                     {" · "}
                     {new Date(review.createdAt).toLocaleDateString()}
                   </p>
@@ -243,11 +325,12 @@ export default function AdminReviews({ loaderData, actionData }: Route.Component
                 </div>
               )}
 
-              <div className="flex flex-wrap gap-2 border-t border-charcoal/10 pt-3">
+              <div className="flex flex-wrap items-center gap-2 border-t border-charcoal/10 pt-3">
                 {review.status === "pending" && (
                   <>
                     <Form method="post">
                       <input type="hidden" name="id" value={review.id} />
+                      <input type="hidden" name="returnTo" value={returnTo} />
                       <input type="hidden" name="status" value="approved" />
                       <Button type="submit" size="sm">
                         Approve
@@ -255,6 +338,7 @@ export default function AdminReviews({ loaderData, actionData }: Route.Component
                     </Form>
                     <Form method="post">
                       <input type="hidden" name="id" value={review.id} />
+                      <input type="hidden" name="returnTo" value={returnTo} />
                       <input type="hidden" name="status" value="rejected" />
                       <Button type="submit" size="sm" variant="outline" className="text-red-600">
                         Reject
@@ -262,9 +346,20 @@ export default function AdminReviews({ loaderData, actionData }: Route.Component
                     </Form>
                   </>
                 )}
+                {review.status === "approved" && (
+                  <Form method="post">
+                    <input type="hidden" name="id" value={review.id} />
+                    <input type="hidden" name="returnTo" value={returnTo} />
+                    <input type="hidden" name="status" value="rejected" />
+                    <Button type="submit" size="sm" variant="outline">
+                      Unpublish
+                    </Button>
+                  </Form>
+                )}
                 {review.status !== "pending" && (
                   <Form method="post">
                     <input type="hidden" name="id" value={review.id} />
+                    <input type="hidden" name="returnTo" value={returnTo} />
                     <input type="hidden" name="status" value="pending" />
                     <Button type="submit" size="sm" variant="ghost">
                       Reset to pending
@@ -273,16 +368,27 @@ export default function AdminReviews({ loaderData, actionData }: Route.Component
                 )}
                 <Form
                   method="post"
+                  className="sm:ml-auto"
                   onSubmit={(event) => {
-                    if (!confirm("Delete this review? This cannot be undone.")) {
+                    if (
+                      !confirm(
+                        `Delete review by ${review.customerName}? This permanently removes mirrored copies on set pieces too.`
+                      )
+                    ) {
                       event.preventDefault();
                     }
                   }}
                 >
                   <input type="hidden" name="id" value={review.id} />
+                  <input type="hidden" name="returnTo" value={returnTo} />
                   <input type="hidden" name="intent" value="delete" />
-                  <Button type="submit" size="sm" variant="ghost" className="text-red-700">
-                    Delete
+                  <Button
+                    type="submit"
+                    size="sm"
+                    variant="outline"
+                    className="border-red-200 text-red-700 hover:border-red-400 hover:bg-red-50"
+                  >
+                    Delete forever
                   </Button>
                 </Form>
               </div>
@@ -290,6 +396,43 @@ export default function AdminReviews({ loaderData, actionData }: Route.Component
           ))
         )}
       </div>
+
+      {filteredCount > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-charcoal/10 pt-4">
+          <p className="text-sm text-charcoal/55">
+            Showing {rangeStart}–{rangeEnd} of {filteredCount}
+          </p>
+          <div className="flex items-center gap-2">
+            {page > 1 ? (
+              <Link
+                to={reviewsHref(active, page - 1)}
+                className="inline-flex min-h-11 items-center rounded-full border border-charcoal/15 px-4 text-sm text-navy hover:border-navy"
+              >
+                Previous
+              </Link>
+            ) : (
+              <span className="inline-flex min-h-11 items-center rounded-full border border-charcoal/10 px-4 text-sm text-charcoal/30">
+                Previous
+              </span>
+            )}
+            <span className="text-sm tabular-nums text-charcoal/60">
+              Page {page} / {totalPages}
+            </span>
+            {page < totalPages ? (
+              <Link
+                to={reviewsHref(active, page + 1)}
+                className="inline-flex min-h-11 items-center rounded-full border border-charcoal/15 px-4 text-sm text-navy hover:border-navy"
+              >
+                Next
+              </Link>
+            ) : (
+              <span className="inline-flex min-h-11 items-center rounded-full border border-charcoal/10 px-4 text-sm text-charcoal/30">
+                Next
+              </span>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

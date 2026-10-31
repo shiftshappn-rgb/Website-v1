@@ -17,9 +17,11 @@ export const links: Route.LinksFunction = () => [
     href: "https://fonts.gstatic.com",
     crossOrigin: "anonymous",
   },
+  { rel: "preconnect", href: "https://res.cloudinary.com" },
   {
     rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap",
+    // Subset to weights actually used — cuts render-blocking font CSS/bytes.
+    href: "https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap",
   },
 ];
 

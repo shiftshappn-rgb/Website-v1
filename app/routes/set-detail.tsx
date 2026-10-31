@@ -1,12 +1,18 @@
 import { useMemo, useState } from "react";
 import type { Route } from "./+types/set-detail";
-import { data, Link, useSearchParams } from "react-router";
+import { data, Link, useActionData, useSearchParams } from "react-router";
 import { ProductGallery } from "~/components/storefront/ProductGallery";
 import { ProductInfoTabs } from "~/components/storefront/ProductInfoTabs";
+import { ProductReviewsSection } from "~/components/storefront/ProductReviewsSection";
 import { SizeChartDrawer } from "~/components/storefront/SizeChartDrawer";
+import { StarRating } from "~/components/storefront/StarRating";
 import { isDatabaseAvailable, tryDb } from "~/db.server";
 import { productCardSelect } from "~/lib/catalog.server";
 import { useCart } from "~/lib/cart";
+import { submitProductReview } from "~/lib/review-submit.server";
+import { dedupeReviews, serializeReview } from "~/lib/reviews";
+import { getCustomerNav } from "~/lib/session.server";
+import { customerHasVerifiedPurchase } from "~/lib/verified-purchase.server";
 import { piecePrices, sortSizes } from "~/lib/sets";
 import { buildMeta, breadcrumbJsonLd, JsonLd, productJsonLd } from "~/lib/seo";
 import { cloudinaryImageUrl } from "~/lib/cloudinary";
@@ -26,6 +32,7 @@ type PieceVariant = {
 
 type Piece = {
   id: string;
+  slug: string;
   name: string;
   basePrice: number;
   variants: PieceVariant[];
@@ -44,8 +51,9 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   if (!isDatabaseAvailable()) throw data("Set not found", { status: 404 });
   const db = tryDb();
   if (!db) throw data("Set not found", { status: 404 });
+  const database = db;
 
-  const bundle = await db.bundle.findUnique({
+  const bundle = await database.bundle.findUnique({
     where: { slug: params.slug },
     include: {
       products: {
@@ -68,6 +76,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
   const toPiece = (link: typeof topLink): Piece => ({
     id: link.product.id,
+    slug: link.product.slug,
     name: link.product.name,
     basePrice: Number(link.product.basePrice),
     variants: link.product.variants.map((variant) => ({
@@ -126,7 +135,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
         }
       : { category: { slug: "accessories" } };
 
-    return db.product.findMany({
+    return database.product.findMany({
       where: {
         id: { notIn: excludeIds },
         ...audienceFilter,
@@ -138,16 +147,41 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     });
   }
 
-  let wearWithRows = await findWearWith("active");
+  const pieceIds = [top.id, pants.id];
+
+  const [activeWearWith, reviewRows, customer] = await Promise.all([
+    findWearWith("active"),
+    database.review.findMany({
+      where: {
+        status: "approved",
+        productId: { in: pieceIds },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 80,
+    }),
+    getCustomerNav(request),
+  ]);
+
+  let wearWithRows = activeWearWith;
   if (wearWithRows.length === 0) wearWithRows = await findWearWith();
   if (wearWithRows.length === 0) {
-    wearWithRows = await db.product.findMany({
+    wearWithRows = await database.product.findMany({
       where: { id: { notIn: excludeIds } },
       take: 1,
       orderBy: { updatedAt: "desc" },
       select: productCardSelect,
     });
   }
+
+  const reviews = dedupeReviews(reviewRows.map(serializeReview));
+  const avgRating =
+    reviews.length > 0
+      ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
+      : null;
+
+  const verifiedPurchase = customer
+    ? await customerHasVerifiedPurchase(database, customer.id, pieceIds)
+    : false;
 
   return {
     set: {
@@ -175,7 +209,56 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       colors.find((color) => colorHasImages(color.name))?.name ??
       colors[0]?.name ??
       null,
+    reviews,
+    avgRating,
+    reviewer: {
+      name: customer?.name?.trim() || "",
+      isSignedIn: Boolean(customer),
+      verifiedPurchase,
+    },
   };
+}
+
+export async function action({ request, params }: Route.ActionArgs) {
+  if (!isDatabaseAvailable()) {
+    return { error: "Reviews are unavailable right now." };
+  }
+
+  const db = tryDb();
+  if (!db) {
+    return { error: "Reviews are unavailable right now." };
+  }
+
+  const bundle = await db.bundle.findUnique({
+    where: { slug: params.slug },
+    include: {
+      products: {
+        select: {
+          role: true,
+          productId: true,
+        },
+      },
+    },
+  });
+
+  if (!bundle) {
+    return { error: "Set not found." };
+  }
+
+  const topId = bundle.products.find((item) => item.role === "top")?.productId;
+  const pantsId = bundle.products.find((item) => item.role === "pants")?.productId;
+  if (!topId) {
+    return { error: "Set not found." };
+  }
+
+  return submitProductReview({
+    db,
+    request,
+    productId: topId,
+    verifiedAgainstProductIds: [topId, ...(pantsId ? [pantsId] : [])],
+    // Mirror onto pants so the review appears on both piece PDPs (and admin).
+    mirrorToProductIds: pantsId ? [pantsId] : [],
+  });
 }
 
 function sizesFor(piece: Piece, color: string | null) {
@@ -189,7 +272,8 @@ function sizesFor(piece: Piece, color: string | null) {
 }
 
 export default function SetDetail({ loaderData }: Route.ComponentProps) {
-  const { set, cloudName, initialColor, wearWith } = loaderData;
+  const { set, cloudName, initialColor, wearWith, reviews, avgRating, reviewer } = loaderData;
+  const actionData = useActionData<typeof action>();
   const addSet = useCart((state) => state.addSet);
   const [searchParams, setSearchParams] = useSearchParams();
   const [topSize, setTopSize] = useState<string | null>(null);
@@ -376,6 +460,24 @@ export default function SetDetail({ loaderData }: Route.ComponentProps) {
               <h1 className="text-[1.75rem] font-semibold leading-tight tracking-tight text-charcoal">
                 {set.name} set
               </h1>
+
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                <a href="#reviews" className="inline-flex items-center gap-2">
+                  <StarRating value={avgRating ?? 0} size={14} />
+                  <span className="text-[13px] text-charcoal/55">
+                    {avgRating != null
+                      ? `${avgRating.toFixed(1)} (${reviews.length} review${reviews.length === 1 ? "" : "s"})`
+                      : "No reviews yet"}
+                  </span>
+                </a>
+                <a
+                  href="#write-review"
+                  className="text-[13px] font-medium text-navy underline-offset-4 transition-colors hover:text-terracotta hover:underline"
+                >
+                  Write a review
+                </a>
+              </div>
+
               <p className="mt-4 text-lg font-medium text-charcoal">
                 {formatCurrency(prices.total)}
                 {prices.total < compareAt && (
@@ -538,6 +640,21 @@ export default function SetDetail({ loaderData }: Route.ComponentProps) {
               </div>
             </section>
           )}
+
+          <ProductReviewsSection
+            productSlug={set.top.slug}
+            productName={`${set.name} set`}
+            reviews={reviews}
+            avgRating={avgRating}
+            totalCount={reviews.length}
+            previewLimit={6}
+            showAllLink={reviews.length > 6}
+            allReviewsHref={`/products/${set.top.slug}/reviews`}
+            cloudName={cloudName}
+            reviewer={reviewer}
+            submitted={actionData?.submitted}
+            error={actionData?.error}
+          />
         </div>
       </div>
 

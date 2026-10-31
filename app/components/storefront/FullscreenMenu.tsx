@@ -136,11 +136,11 @@ export function FullscreenMenu({ open, onClose }: FullscreenMenuProps) {
         <X size={20} />
       </button>
 
-      <nav className="pointer-events-none relative z-10 flex min-h-full flex-col justify-center px-8 py-28 sm:px-14 lg:px-20 xl:px-24">
-        <p className="mb-8 text-[11px] font-semibold uppercase tracking-[0.28em] text-gold/55 sm:mb-10">
+      <nav className="pointer-events-none relative z-10 flex h-full flex-col justify-center overflow-y-auto px-8 py-20 sm:px-14 sm:py-24 lg:px-20 xl:px-24">
+        <p className="mb-5 text-[11px] font-semibold uppercase tracking-[0.28em] text-gold/55 sm:mb-6">
           Menu
         </p>
-        <ul className="pointer-events-auto flex max-w-xl flex-col gap-3 sm:gap-4">
+        <ul className="pointer-events-auto flex max-w-xl flex-col gap-1.5 sm:gap-2">
           {menuLinks.map((link, index) => {
             const active = isActive(link.href);
             return (
@@ -154,14 +154,14 @@ export function FullscreenMenu({ open, onClose }: FullscreenMenuProps) {
                   prefetch="intent"
                   onClick={onClose}
                   className={cn(
-                    "group relative inline-flex min-h-11 items-center pl-12 font-sans text-3xl font-extrabold tracking-tight transition-colors sm:min-h-12 sm:pl-14 sm:text-4xl lg:text-5xl",
+                    "group relative inline-flex min-h-10 items-center pl-10 font-sans text-xl font-extrabold tracking-tight transition-colors sm:min-h-11 sm:pl-12 sm:text-2xl lg:text-3xl",
                     active ? "text-gold" : "text-gold/80 hover:text-gold"
                   )}
                   aria-current={active ? "page" : undefined}
                 >
                   <span
                     className={cn(
-                      "absolute left-0 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full bg-gold text-charcoal shadow-[0_8px_18px_rgba(17,26,34,0.35)] transition-all duration-300 sm:size-9",
+                      "absolute left-0 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full bg-gold text-charcoal shadow-[0_8px_18px_rgba(17,26,34,0.35)] transition-all duration-300 sm:size-8",
                       active
                         ? "scale-100 opacity-100"
                         : "scale-75 opacity-0 group-hover:scale-100 group-hover:opacity-100"

@@ -151,7 +151,7 @@ export function ReviewForm({
             <Link to="/auth/login" className="font-medium text-navy hover:text-terracotta">
               Sign in
             </Link>{" "}
-            if you bought this — we can mark it as a verified purchase.
+            with the account you used at checkout for a verified purchase badge.
           </p>
         )}
       </div>

@@ -117,6 +117,18 @@ export async function getCustomer(request: Request) {
   });
 }
 
+/** Nav / layout only — avoids loading addresses on every page. */
+export async function getCustomerNav(request: Request) {
+  const session = await getCustomerSession(request);
+  const customerId = session.get("customerId") as string | undefined;
+  if (!customerId) return null;
+
+  return db.customer.findUnique({
+    where: { id: customerId },
+    select: { id: true, name: true, email: true },
+  });
+}
+
 export async function hashPassword(password: string) {
   return bcrypt.hash(password, 12);
 }

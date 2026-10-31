@@ -4,7 +4,7 @@ import { PrismaClient } from "@prisma/client";
 import ws from "ws";
 
 /** Bump when Prisma schema gains fields that must invalidate a cached client. */
-const PRISMA_CLIENT_SCHEMA_VERSION = 3;
+const PRISMA_CLIENT_SCHEMA_VERSION = 5;
 
 declare global {
   // eslint-disable-next-line no-var

@@ -7,15 +7,21 @@ import { ProductReviewsSection } from "~/components/storefront/ProductReviewsSec
 import { SizeChartDrawer } from "~/components/storefront/SizeChartDrawer";
 import { StarRating } from "~/components/storefront/StarRating";
 import { isDatabaseAvailable, tryDb } from "~/db.server";
+import {
+  isAccessoriesCategory,
+  isSimpleAccessorySku,
+} from "~/lib/accessories";
 import { productCardSelect } from "~/lib/catalog.server";
 import { useCart } from "~/lib/cart";
 import { cloudinaryImageUrl } from "~/lib/cloudinary";
 import { CATALOG_LENGTHS } from "~/lib/product-catalog";
-import { serializeReview } from "~/lib/reviews";
+import { getSharedReviewProductIds } from "~/lib/review-products.server";
+import { dedupeReviews, serializeReview } from "~/lib/reviews";
 import { submitProductReview } from "~/lib/review-submit.server";
 import { getProductColors } from "~/lib/serialize";
 import { serializeProduct, serializeProductForCard } from "~/lib/serialize.server";
-import { getCustomer } from "~/lib/session.server";
+import { getCustomerNav } from "~/lib/session.server";
+import { customerHasVerifiedPurchase } from "~/lib/verified-purchase.server";
 import {
   buildMeta,
   JsonLd,
@@ -61,10 +67,6 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       variants: true,
       category: true,
       fabricType: true,
-      reviews: {
-        where: { status: "approved" },
-        orderBy: { createdAt: "desc" },
-      },
     },
   });
 
@@ -72,33 +74,38 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     throw data("Product not found", { status: 404 });
   }
 
-  const serialized = serializeProduct(product);
-  const avgRating =
-    product.reviews.length > 0
-      ? product.reviews.reduce((sum, r) => sum + r.rating, 0) / product.reviews.length
-      : null;
-
+  const reviewProductIds = await getSharedReviewProductIds(db, product.id);
   const requestedColor = new URL(request.url).searchParams.get("color");
-  const customer = await getCustomer(request);
+
+  const [reviewRows, customer, relatedRows] = await Promise.all([
+    db.review.findMany({
+      where: { status: "approved", productId: { in: reviewProductIds } },
+      orderBy: { createdAt: "desc" },
+    }),
+    getCustomerNav(request),
+    db.product.findMany({
+      where: {
+        status: "active",
+        id: { not: product.id },
+        ...(product.categoryId ? { categoryId: product.categoryId } : {}),
+      },
+      take: 2,
+      select: productCardSelect,
+    }),
+  ]);
+
+  const reviews = dedupeReviews(reviewRows.map(serializeReview));
   const verifiedPurchase = customer
-    ? Boolean(
-        await db.orderItem.findFirst({
-          where: {
-            productVariant: { productId: product.id },
-            order: {
-              status: { in: ["paid", "fulfilled"] },
-              OR: [{ customerId: customer.id }, { email: customer.email }],
-            },
-          },
-          select: { id: true },
-        })
-      )
+    ? await customerHasVerifiedPurchase(db, customer.id, reviewProductIds)
     : false;
 
   return {
-    product: serialized,
-    reviews: product.reviews.map(serializeReview),
-    avgRating,
+    product: serializeProduct(product),
+    reviews,
+    avgRating:
+      reviews.length > 0
+        ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+        : null,
     cloudName: process.env.CLOUDINARY_CLOUD_NAME,
     initialColor: requestedColor,
     reviewer: {
@@ -106,17 +113,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       isSignedIn: Boolean(customer),
       verifiedPurchase,
     },
-    related: (
-      await db.product.findMany({
-        where: {
-          status: "active",
-          id: { not: product.id },
-          ...(product.categoryId ? { categoryId: product.categoryId } : {}),
-        },
-        take: 2,
-        select: productCardSelect,
-      })
-    ).map(serializeProductForCard),
+    related: relatedRows.map(serializeProductForCard),
   };
 }
 
@@ -138,7 +135,15 @@ export async function action({ request, params }: Route.ActionArgs) {
     return { error: "Product not found." };
   }
 
-  return submitProductReview({ db, request, productId: product.id });
+  const sharedIds = await getSharedReviewProductIds(db, product.id);
+  return submitProductReview({
+    db,
+    request,
+    productId: product.id,
+    verifiedAgainstProductIds: sharedIds,
+    // Keep set mates in sync when reviewing from a single piece page.
+    mirrorToProductIds: sharedIds.filter((id) => id !== product.id),
+  });
 }
 
 function resolveInitialColor(
@@ -159,6 +164,8 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
   const addItem = useCart((s) => s.addItem);
   const colors = getProductColors(product);
   const [, setSearchParams] = useSearchParams();
+  const isAccessory = isAccessoriesCategory(product.category);
+  const simpleSku = isAccessory && isSimpleAccessorySku(product.variants);
 
   const [selectedColor, setSelectedColor] = useState(() =>
     resolveInitialColor(colors, initialColor)
@@ -167,7 +174,9 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
     () => product.variants.filter((v) => v.colorName === selectedColor),
     [product.variants, selectedColor]
   );
-  const [selectedSize, setSelectedSize] = useState("");
+  const [selectedSize, setSelectedSize] = useState(() =>
+    simpleSku ? (product.variants[0]?.size ?? "") : ""
+  );
   const [selectedLength, setSelectedLength] = useState<(typeof CATALOG_LENGTHS)[number]>(
     "Straight"
   );
@@ -194,9 +203,13 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
 
   useEffect(() => {
     setActiveImage(0);
-    setSelectedSize("");
+    if (simpleSku) {
+      setSelectedSize(product.variants[0]?.size ?? "");
+    } else {
+      setSelectedSize("");
+    }
     setQuantity(1);
-  }, [selectedColor]);
+  }, [selectedColor, simpleSku, product.variants]);
 
   const inStock = selectedVariant ? selectedVariant.inventoryQty > 0 : true;
   const maxQty = Math.max(1, selectedVariant?.inventoryQty ?? 9);
@@ -204,7 +217,8 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
   const lengthGuide = product.lengthGuide || DEFAULT_LENGTH_GUIDE;
   const canAdd = Boolean(selectedVariant && inStock);
   const fitLine =
-    product.fitSummary?.split("\n")[0] || "Classic fit. Runs true to size.";
+    product.fitSummary?.split("\n")[0] ||
+    (isAccessory ? null : "Classic fit. Runs true to size.");
   const detailLines = product.description
     .split("\n")
     .map((line) => line.replace(/^[-•]\s*/, "").trim())
@@ -246,11 +260,12 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
   const imageSrc = (publicId: string, width: number) =>
     `https://res.cloudinary.com/${cloud}/image/upload/f_auto,q_auto,w_${width}/${publicId}`;
 
-  const addLabel = !selectedSize
-    ? "Select a size"
-    : !inStock
-      ? "Out of stock"
-      : `${formatCurrency(displayPrice)} · Add to bag`;
+  const addLabel =
+    !simpleSku && !selectedSize
+      ? "Select a size"
+      : !inStock
+        ? "Out of stock"
+        : `${formatCurrency(displayPrice)} · Add to bag`;
 
   const ctaStyle = ctaFromHex(
     colors.find((color) => color.colorName === selectedColor)?.colorHex
@@ -318,14 +333,22 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
                 {product.name}
               </h1>
 
-              <a href="#reviews" className="mt-3 inline-flex items-center gap-2">
-                <StarRating value={avgRating ?? 0} size={14} />
-                <span className="text-[13px] text-charcoal/55">
-                  {avgRating != null
-                    ? `${avgRating.toFixed(1)} (${reviews.length} review${reviews.length === 1 ? "" : "s"})`
-                    : "Write a review"}
-                </span>
-              </a>
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                <a href="#reviews" className="inline-flex items-center gap-2">
+                  <StarRating value={avgRating ?? 0} size={14} />
+                  <span className="text-[13px] text-charcoal/55">
+                    {avgRating != null
+                      ? `${avgRating.toFixed(1)} (${reviews.length} review${reviews.length === 1 ? "" : "s"})`
+                      : "No reviews yet"}
+                  </span>
+                </a>
+                <a
+                  href="#write-review"
+                  className="text-[13px] font-medium text-navy underline-offset-4 transition-colors hover:text-terracotta hover:underline"
+                >
+                  Write a review
+                </a>
+              </div>
 
               <p className="mt-4 text-lg font-medium text-charcoal">
                 {formatCurrency(displayPrice)}
@@ -336,70 +359,80 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
                 )}
               </p>
 
-              <div className="mt-8">
-                <div className="mb-3 flex items-baseline justify-between gap-4">
-                  <p className="text-[13px] text-charcoal">
-                    Colour: <span className="font-medium">{selectedColor}</span>
-                  </p>
+              {!simpleSku && (
+                <div className="mt-8">
+                  <div className="mb-3 flex items-baseline justify-between gap-4">
+                    <p className="text-[13px] text-charcoal">
+                      Colour: <span className="font-medium">{selectedColor}</span>
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2.5">
+                    {colors.map((color) => (
+                      <button
+                        key={color.colorName}
+                        type="button"
+                        onClick={() => selectColor(color.colorName)}
+                        className={cn(
+                          "size-7 rounded-full border border-black/10",
+                          selectedColor === color.colorName &&
+                            "ring-1 ring-charcoal ring-offset-2"
+                        )}
+                        style={{ backgroundColor: color.colorHex }}
+                        title={color.colorName}
+                        aria-label={color.colorName}
+                        aria-pressed={selectedColor === color.colorName}
+                      />
+                    ))}
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-2.5">
-                  {colors.map((color) => (
-                    <button
-                      key={color.colorName}
-                      type="button"
-                      onClick={() => selectColor(color.colorName)}
-                      className={cn(
-                        "size-7 rounded-full border border-black/10",
-                        selectedColor === color.colorName && "ring-1 ring-charcoal ring-offset-2"
-                      )}
-                      style={{ backgroundColor: color.colorHex }}
-                      title={color.colorName}
-                      aria-label={color.colorName}
-                      aria-pressed={selectedColor === color.colorName}
-                    />
-                  ))}
-                </div>
-              </div>
+              )}
 
-              <div className="mt-8">
-                <div className="mb-3 flex items-baseline justify-between">
-                  <p className="text-[13px] text-charcoal">
-                    {selectedSize ? `Size: ${selectedSize}` : "Select a size"}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setChartOpen(true)}
-                    className="text-[13px] text-charcoal underline underline-offset-4"
-                  >
-                    Size chart
-                  </button>
+              {!simpleSku && (
+                <div className="mt-8">
+                  <div className="mb-3 flex items-baseline justify-between">
+                    <p className="text-[13px] text-charcoal">
+                      {selectedSize ? `Size: ${selectedSize}` : "Select a size"}
+                    </p>
+                    {!isAccessory && (
+                      <button
+                        type="button"
+                        onClick={() => setChartOpen(true)}
+                        className="text-[13px] text-charcoal underline underline-offset-4"
+                      >
+                        Size chart
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {sizesForColor.map((variant) => (
+                      <button
+                        key={variant.id}
+                        type="button"
+                        disabled={variant.inventoryQty <= 0}
+                        onClick={() => {
+                          setSelectedSize(variant.size);
+                          setQuantity(1);
+                        }}
+                        className={cn(
+                          "flex h-10 min-w-12 items-center justify-center rounded-md border px-3 text-[13px]",
+                          selectedSize === variant.size
+                            ? "border-charcoal bg-charcoal text-white"
+                            : "border-charcoal/20 bg-white text-charcoal hover:border-charcoal",
+                          variant.inventoryQty <= 0 &&
+                            "cursor-not-allowed line-through opacity-35"
+                        )}
+                      >
+                        {variant.size}
+                      </button>
+                    ))}
+                  </div>
+                  {fitLine && (
+                    <p className="mt-3 text-[13px] text-charcoal/55">{fitLine}</p>
+                  )}
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {sizesForColor.map((variant) => (
-                    <button
-                      key={variant.id}
-                      type="button"
-                      disabled={variant.inventoryQty <= 0}
-                      onClick={() => {
-                        setSelectedSize(variant.size);
-                        setQuantity(1);
-                      }}
-                      className={cn(
-                        "flex h-10 min-w-12 items-center justify-center rounded-md border px-3 text-[13px]",
-                        selectedSize === variant.size
-                          ? "border-charcoal bg-charcoal text-white"
-                          : "border-charcoal/20 bg-white text-charcoal hover:border-charcoal",
-                        variant.inventoryQty <= 0 && "cursor-not-allowed line-through opacity-35"
-                      )}
-                    >
-                      {variant.size}
-                    </button>
-                  ))}
-                </div>
-                <p className="mt-3 text-[13px] text-charcoal/55">{fitLine}</p>
-              </div>
+              )}
 
-              {product.offerLengths && (
+              {product.offerLengths && !isAccessory && (
                 <div className="mt-8">
                   <p className="mb-3 text-[13px] text-charcoal">
                     Length: {selectedLength}

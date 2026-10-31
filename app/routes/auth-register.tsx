@@ -1,16 +1,18 @@
 import { Form, Link, redirect, data } from "react-router";
 import type { Route } from "./+types/auth-register";
+import { AuthDivider, AuthError, AuthShell } from "~/components/auth/AuthShell";
+import { GoogleSignInButton } from "~/components/auth/GoogleSignInButton";
+import { PasswordField } from "~/components/auth/PasswordField";
+import { Button } from "~/components/ui/Button";
+import { Input } from "~/components/ui/Input";
 import { db } from "~/db.server";
+import { isGoogleOAuthConfigured, safeRedirectPath } from "~/lib/google-auth.server";
+import { buildMeta } from "~/lib/seo";
 import {
   createCustomerSession,
   getCustomer,
   hashPassword,
 } from "~/lib/session.server";
-import { buildMeta } from "~/lib/seo";
-import { isGoogleOAuthConfigured, safeRedirectPath } from "~/lib/google-auth.server";
-import { GoogleSignInButton } from "~/components/auth/GoogleSignInButton";
-import { Input } from "~/components/ui/Input";
-import { Button } from "~/components/ui/Button";
 
 export function meta({}: Route.MetaArgs) {
   return buildMeta({
@@ -49,7 +51,9 @@ export async function action({ request }: Route.ActionArgs) {
   if (existing) {
     if (existing.googleId && !existing.passwordHash) {
       return data(
-        { error: "An account with this email already exists. Sign in with Google instead." },
+        {
+          error: "An account with this email already exists. Sign in with Google instead.",
+        },
         { status: 409 }
       );
     }
@@ -72,57 +76,88 @@ export async function action({ request }: Route.ActionArgs) {
 
 export default function AuthRegister({ loaderData, actionData }: Route.ComponentProps) {
   const redirectTo = loaderData?.redirectTo ?? "/account";
-  const loginHref = redirectTo === "/account"
-    ? "/auth/login"
-    : `/auth/login?redirectTo=${encodeURIComponent(redirectTo)}`;
+  const loginHref =
+    redirectTo === "/account"
+      ? "/auth/login"
+      : `/auth/login?redirectTo=${encodeURIComponent(redirectTo)}`;
 
   return (
-    <div className="max-w-md mx-auto px-4 sm:px-6 lg:px-8 py-10 lg:py-14">
-      <h1 className="text-3xl font-serif text-navy mb-2">Create account</h1>
-      <p className="text-charcoal/70 mb-8">
-        Already have an account?{" "}
-        <Link to={loginHref} className="text-navy underline underline-offset-4 hover:text-terracotta">
-          Sign in
-        </Link>
-      </p>
+    <AuthShell
+      title="Join the shift"
+      subtitle={
+        <>
+          Create an account for faster checkout and order tracking. Already shopping with us?{" "}
+          <Link
+            to={loginHref}
+            className="font-medium text-navy underline underline-offset-4 transition-colors hover:text-terracotta"
+          >
+            Sign in
+          </Link>
+        </>
+      }
+      footer={
+        <p>
+          By creating an account you agree to our{" "}
+          <Link
+            to="/policies/terms"
+            className="underline underline-offset-4 hover:text-navy"
+          >
+            terms
+          </Link>{" "}
+          and{" "}
+          <Link
+            to="/policies/privacy"
+            className="underline underline-offset-4 hover:text-navy"
+          >
+            privacy policy
+          </Link>
+          .
+        </p>
+      }
+    >
+      <div className="space-y-5">
+        {actionData?.error ? <AuthError message={actionData.error} /> : null}
 
-      {actionData?.error && (
-        <div className="mb-6 p-4 rounded-lg bg-red-50 text-red-700 text-sm">
-          {actionData.error}
-        </div>
-      )}
-
-      {loaderData?.googleAuthEnabled && (
-        <div className="mb-6 space-y-4">
-          <GoogleSignInButton redirectTo={redirectTo} />
-          <div className="flex items-center gap-3 text-xs uppercase tracking-wide text-charcoal/50">
-            <div className="h-px flex-1 bg-charcoal/10" />
-            <span>or</span>
-            <div className="h-px flex-1 bg-charcoal/10" />
+        {loaderData?.googleAuthEnabled ? (
+          <div className="space-y-4">
+            <GoogleSignInButton redirectTo={redirectTo} className="min-h-11" />
+            <AuthDivider />
           </div>
-        </div>
-      )}
+        ) : null}
 
-      <Form method="post" className="space-y-5">
-        <input type="hidden" name="redirectTo" value={redirectTo} />
-        <Input label="Name (optional)" name="name" autoComplete="name" />
-        <Input label="Email" name="email" type="email" autoComplete="email" required />
-        <Input
-          label="Password"
-          name="password"
-          type="password"
-          autoComplete="new-password"
-          required
-          minLength={8}
-        />
-        <label className="flex items-start gap-2 text-sm text-charcoal">
-          <input type="checkbox" name="marketingOptIn" className="mt-1 rounded border-charcoal/20" />
-          Send me updates about new products and offers
-        </label>
-        <Button type="submit" variant="terracotta" className="w-full">
-          Create account
-        </Button>
-      </Form>
-    </div>
+        <Form method="post" className="space-y-4">
+          <input type="hidden" name="redirectTo" value={redirectTo} />
+          <Input label="Name" name="name" autoComplete="name" placeholder="Optional" />
+          <Input
+            label="Email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            inputMode="email"
+            required
+          />
+          <PasswordField
+            label="Password"
+            name="password"
+            autoComplete="new-password"
+            minLength={8}
+            helperText="At least 8 characters."
+          />
+          <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-transparent px-1 py-2 text-sm text-charcoal transition-colors hover:bg-sand/60">
+            <input
+              type="checkbox"
+              name="marketingOptIn"
+              className="mt-0.5 size-4 rounded border-charcoal/30 text-navy focus:ring-navy"
+            />
+            <span className="leading-snug text-charcoal/75">
+              Send me product drops and offers — no spam, unsubscribe anytime.
+            </span>
+          </label>
+          <Button type="submit" variant="terracotta" size="lg" className="w-full">
+            Create account
+          </Button>
+        </Form>
+      </div>
+    </AuthShell>
   );
 }

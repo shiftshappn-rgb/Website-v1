@@ -5,10 +5,12 @@ import { ReviewCard } from "~/components/storefront/ReviewCard";
 import { ReviewForm } from "~/components/storefront/ReviewForm";
 import { StarRating } from "~/components/storefront/StarRating";
 import { isDatabaseAvailable, tryDb } from "~/db.server";
-import { averageRatingLabel, serializeReview } from "~/lib/reviews";
+import { getSharedReviewProductIds } from "~/lib/review-products.server";
+import { averageRatingLabel, dedupeReviews, serializeReview } from "~/lib/reviews";
 import { submitProductReview } from "~/lib/review-submit.server";
 import { getCustomer } from "~/lib/session.server";
 import { buildMeta } from "~/lib/seo";
+import { customerHasVerifiedPurchase } from "~/lib/verified-purchase.server";
 
 const PAGE_SIZE = 10;
 
@@ -36,43 +38,34 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
   const url = new URL(request.url);
   const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10) || 1);
+  const reviewProductIds = await getSharedReviewProductIds(db, product.id);
 
-  const [totalCount, avgAgg, reviewRows, customer] = await Promise.all([
-    db.review.count({ where: { productId: product.id, status: "approved" } }),
-    db.review.aggregate({
-      where: { productId: product.id, status: "approved" },
-      _avg: { rating: true },
-    }),
+  const [allApproved, customer] = await Promise.all([
     db.review.findMany({
-      where: { productId: product.id, status: "approved" },
+      where: { productId: { in: reviewProductIds }, status: "approved" },
       orderBy: { createdAt: "desc" },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
     }),
     getCustomer(request),
   ]);
 
+  const reviews = dedupeReviews(allApproved.map(serializeReview));
+  const totalCount = reviews.length;
+  const avgRating =
+    totalCount > 0
+      ? reviews.reduce((sum, review) => sum + review.rating, 0) / totalCount
+      : null;
+  const pageRows = reviews.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
   const verifiedPurchase = customer
-    ? Boolean(
-        await db.orderItem.findFirst({
-          where: {
-            productVariant: { productId: product.id },
-            order: {
-              status: { in: ["paid", "fulfilled"] },
-              OR: [{ customerId: customer.id }, { email: customer.email }],
-            },
-          },
-          select: { id: true },
-        })
-      )
+    ? await customerHasVerifiedPurchase(db, customer.id, reviewProductIds)
     : false;
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   return {
     product,
-    reviews: reviewRows.map(serializeReview),
-    avgRating: avgAgg._avg.rating,
+    reviews: pageRows,
+    avgRating,
     totalCount,
     page,
     totalPages,
@@ -102,7 +95,14 @@ export async function action({ request, params }: Route.ActionArgs) {
     return { error: "Product not found." };
   }
 
-  return submitProductReview({ db, request, productId: product.id });
+  const sharedIds = await getSharedReviewProductIds(db, product.id);
+  return submitProductReview({
+    db,
+    request,
+    productId: product.id,
+    verifiedAgainstProductIds: sharedIds,
+    mirrorToProductIds: sharedIds.filter((id) => id !== product.id),
+  });
 }
 
 export default function ProductReviewsPage({ loaderData }: Route.ComponentProps) {

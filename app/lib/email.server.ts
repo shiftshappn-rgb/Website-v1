@@ -28,6 +28,7 @@ export async function sendOrderConfirmationEmail({
   siteName,
   timeWindow,
   handover,
+  reviewTargets,
 }: {
   to: string;
   orderNumber: string;
@@ -37,6 +38,7 @@ export async function sendOrderConfirmationEmail({
   siteName?: string | null;
   timeWindow?: string | null;
   handover?: string | null;
+  reviewTargets?: Array<{ label: string; href: string }>;
 }): Promise<boolean> {
   const client = getResend();
   if (!client) {
@@ -74,6 +76,23 @@ export async function sendOrderConfirmationEmail({
       <a href="${appUrl}/policies/privacy">Privacy</a>
     </p>`;
 
+  const reviewHtml =
+    reviewTargets && reviewTargets.length > 0
+      ? `<div style="margin:28px 0;padding:20px;background:#F6F1E9;border-radius:12px">
+          <p style="margin:0 0 8px;font-weight:600;color:#1D4E78">How’s the fit?</p>
+          <p style="margin:0 0 14px;font-size:14px;color:#1C2B36">
+            When you’ve worn them on a shift, leave a quick review — it helps the next nurse find the right size.
+          </p>
+          ${reviewTargets
+            .slice(0, 4)
+            .map(
+              (target) =>
+                `<p style="margin:0 0 8px"><a href="${appUrl}${escapeHtml(target.href)}" style="color:#1D4E78;font-weight:600">Review ${escapeHtml(target.label)} →</a></p>`
+            )
+            .join("")}
+        </div>`
+      : "";
+
   await client.emails.send({
     from: "shiftshappn <orders@shiftshappn.com>",
     to,
@@ -89,6 +108,7 @@ export async function sendOrderConfirmationEmail({
           <tr><td style="padding:12px 0;border-top:1px solid #F6F1E9">HST</td><td style="padding:12px 0;border-top:1px solid #F6F1E9;text-align:right">${tax} CAD</td></tr>
           <tr><td style="padding:12px 0"><strong>Total</strong></td><td style="padding:12px 0;text-align:right"><strong>${total} CAD</strong></td></tr>
         </table>
+        ${reviewHtml}
         ${policyLinks}
       </div>
     `,
@@ -157,12 +177,27 @@ export async function sendGiftCardEmail({
 export async function sendShippingUpdateEmail({
   to,
   orderNumber,
+  reviewTargets,
 }: {
   to: string;
   orderNumber: string;
+  reviewTargets?: Array<{ label: string; href: string }>;
 }) {
   const client = getResend();
   if (!client) return;
+
+  const appUrl = process.env.APP_URL ?? "http://localhost:5173";
+  const reviewHtml =
+    reviewTargets && reviewTargets.length > 0
+      ? `<p style="margin:24px 0 8px">Once you’ve worn them on a shift:</p>
+         ${reviewTargets
+           .slice(0, 3)
+           .map(
+             (target) =>
+               `<p style="margin:0 0 6px"><a href="${appUrl}${escapeHtml(target.href)}" style="color:#1D4E78">Review ${escapeHtml(target.label)} →</a></p>`
+           )
+           .join("")}`
+      : "";
 
   await client.emails.send({
     from: "shiftshappn <orders@shiftshappn.com>",
@@ -171,7 +206,8 @@ export async function sendShippingUpdateEmail({
     html: `
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#1C2B36">
         <h1 style="color:#1D4E78;font-family:serif">Your scrubs are on the way</h1>
-        <p>Order <strong>${orderNumber}</strong> has shipped. You'll receive tracking details shortly.</p>
+        <p>Order <strong>${escapeHtml(orderNumber)}</strong> has shipped. You'll receive tracking details shortly.</p>
+        ${reviewHtml}
       </div>
     `,
   });

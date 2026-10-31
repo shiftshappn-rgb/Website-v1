@@ -14,6 +14,12 @@ import {
   type EditVariant,
 } from "~/components/admin/VariantsEditor";
 import { db, isDatabaseAvailable } from "~/db.server";
+import {
+  ACCESSORY_DEFAULT_COLOR,
+  ACCESSORY_DEFAULT_COLOR_HEX,
+  ACCESSORY_DEFAULT_SIZE,
+  isAccessoriesCategory,
+} from "~/lib/accessories";
 import { listCatalogColors } from "~/lib/catalog-colors.server";
 import { cloudinaryImageUrl } from "~/lib/cloudinary";
 import { buildVariantSku, CATALOG_SIZES } from "~/lib/product-catalog";
@@ -312,6 +318,55 @@ export async function action({ request, params }: Route.ActionArgs): Promise<Act
       return { error: "No variants found for that colour." };
     }
     return { success: "Images saved." };
+  }
+
+  if (intent === "add-default-accessory-stock") {
+    const product = await db.product.findUnique({
+      where: { id: productId },
+      select: {
+        slug: true,
+        category: { select: { slug: true } },
+        _count: { select: { variants: true } },
+      },
+    });
+    if (!product) {
+      return { error: "Product not found." };
+    }
+    if (!isAccessoriesCategory(product.category)) {
+      return { error: "Default stock is only for accessories." };
+    }
+    if (product._count.variants > 0) {
+      return { error: "This product already has stock rows." };
+    }
+
+    const sku = buildVariantSku(
+      product.slug,
+      ACCESSORY_DEFAULT_COLOR,
+      ACCESSORY_DEFAULT_SIZE
+    );
+
+    try {
+      await db.productVariant.create({
+        data: {
+          productId,
+          colorName: ACCESSORY_DEFAULT_COLOR,
+          colorHex: ACCESSORY_DEFAULT_COLOR_HEX,
+          size: ACCESSORY_DEFAULT_SIZE,
+          sku,
+          inventoryQty: 0,
+          images: [],
+        },
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        return { error: `SKU ${sku} already exists.` };
+      }
+      throw error;
+    }
+
+    return {
+      success: "Default stock added. You can upload photos above.",
+    };
   }
 
   if (intent === "add-variant") {
@@ -629,6 +684,13 @@ export default function AdminProductsEdit({ loaderData, actionData }: Route.Comp
   const primaryPublicId = colorGroups.find((group) => group.images[0])?.images[0]?.publicId ?? null;
   const statusVariant =
     product.status === "active" ? "success" : product.status === "archived" ? "default" : "warning";
+  const selectedCategory = categories.find((category) => category.id === product.categoryId);
+  const isAccessory = isAccessoriesCategory(selectedCategory);
+  const onlyDefaultColourGroup =
+    colorGroups.length === 1 && colorGroups[0].colorName === ACCESSORY_DEFAULT_COLOR;
+  const addingDefaultStock =
+    navigation.state !== "idle" &&
+    navigation.formData?.get("intent") === "add-default-accessory-stock";
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-24">
@@ -787,21 +849,31 @@ export default function AdminProductsEdit({ loaderData, actionData }: Route.Comp
             rows={3}
             className="min-h-20"
           />
-          <Input
-            label="Length guide"
-            name="lengthGuide"
-            defaultValue={product.lengthGuide ?? ""}
-            placeholder='Jogger 29" · Straight 31" · Tall 33"'
-          />
-          <label className="flex min-h-11 items-center gap-3 text-sm text-charcoal">
-            <input
-              type="checkbox"
-              name="offerLengths"
-              defaultChecked={product.offerLengths}
-              className="size-4 rounded border-charcoal/30"
-            />
-            Offer Jogger / Straight / Tall on the product page
-          </label>
+          {!isAccessory && (
+            <>
+              <Input
+                label="Length guide"
+                name="lengthGuide"
+                defaultValue={product.lengthGuide ?? ""}
+                placeholder='Jogger 29" · Straight 31" · Tall 33"'
+              />
+              <label className="flex min-h-11 items-center gap-3 text-sm text-charcoal">
+                <input
+                  type="checkbox"
+                  name="offerLengths"
+                  defaultChecked={product.offerLengths}
+                  className="size-4 rounded border-charcoal/30"
+                />
+                Offer Jogger / Straight / Tall on the product page
+              </label>
+            </>
+          )}
+          {isAccessory && (
+            <>
+              <input type="hidden" name="lengthGuide" value={product.lengthGuide ?? ""} />
+              <input type="hidden" name="offerLengths" value="" />
+            </>
+          )}
         </Card>
 
         <Card>
@@ -838,21 +910,39 @@ export default function AdminProductsEdit({ loaderData, actionData }: Route.Comp
         <div>
           <h2 className="font-serif text-lg text-navy">Media</h2>
           <p className="mt-1 text-sm text-charcoal/60">
-            Upload photos per colour. Every size of that colour uses the same gallery on the
-            storefront.
+            {isAccessory && (onlyDefaultColourGroup || colorGroups.length === 0)
+              ? "Upload product photos. They appear on the accessory page and in the shop."
+              : "Upload photos per colour. Every size of that colour uses the same gallery on the storefront."}
           </p>
         </div>
         {colorGroups.length === 0 ? (
-          <p className="rounded-lg bg-sand/70 px-4 py-3 text-sm text-charcoal/70">
-            Add a colour and size below before uploading photos.
-          </p>
+          <div className="space-y-3 rounded-lg bg-sand/70 px-4 py-3 text-sm text-charcoal/70">
+            {isAccessory ? (
+              <>
+                <p>
+                  This accessory needs a stock row before photos can be attached. Add default
+                  One Size stock to unlock uploads.
+                </p>
+                <Form method="post">
+                  <input type="hidden" name="intent" value="add-default-accessory-stock" />
+                  <Button type="submit" disabled={addingDefaultStock}>
+                    {addingDefaultStock ? "Adding…" : "Add default stock (One Size)"}
+                  </Button>
+                </Form>
+              </>
+            ) : (
+              <p>Add a colour and size below before uploading photos.</p>
+            )}
+          </div>
         ) : (
           <ColorGroupsEditor groups={colorGroups} productName={product.name} cloudName={cloudName} />
         )}
       </Card>
 
       <Card className="space-y-4">
-        <h2 className="font-serif text-lg text-navy">Variants</h2>
+        <h2 className="font-serif text-lg text-navy">
+          {isAccessory ? "Stock" : "Variants"}
+        </h2>
         {product.variants.length > 0 && (
           <VariantsEditor
             key={product.variants.map((variant) => variant.id).join("-")}
@@ -867,6 +957,7 @@ export default function AdminProductsEdit({ loaderData, actionData }: Route.Comp
             colorName: variant.colorName,
             size: variant.size,
           }))}
+          isAccessory={isAccessory}
         />
       </Card>
 

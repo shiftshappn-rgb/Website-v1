@@ -1,5 +1,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { sendOrderConfirmationEmail } from "~/lib/email.server";
+import { resolveReviewTargetsFromOrder } from "~/lib/review-targets.server";
+import { groupOrderLines } from "~/lib/order-line-groups";
 import { formatCurrency } from "~/lib/utils";
 
 type Db = PrismaClient;
@@ -146,6 +148,8 @@ export async function deliverOrderConfirmation(db: Db, orderId: string) {
     order.deliveryLocation?.type === "hospital" || order.deliveryLocation?.type === "clinic";
 
   try {
+    const reviewTargets = await resolveReviewTargetsFromOrder(db, order.items);
+
     const sent = await sendOrderConfirmationEmail({
       to: order.email,
       orderNumber: order.orderNumber,
@@ -156,14 +160,45 @@ export async function deliverOrderConfirmation(db: Db, orderId: string) {
       handover: isDrop
         ? "We bring the order to the site in your chosen window. Someone on the unit receives it."
         : null,
-      items: order.items.map((item) => ({
-        name:
-          item.lineType === "gift_card"
-            ? item.productName
-            : `${item.productName} (${item.variantLabel})`,
-        quantity: item.quantity,
-        price: formatCurrency(Number(item.priceAtPurchase) * item.quantity),
-      })),
+      reviewTargets,
+      items: groupOrderLines(
+        order.items.map((item) => ({
+          productName: item.productName,
+          variantLabel: item.variantLabel,
+          quantity: item.quantity,
+          priceAtPurchase: Number(item.priceAtPurchase),
+        }))
+      ).flatMap((group) => {
+        if (group.kind === "bundle") {
+          return [
+            {
+              name: `Bundle: ${group.name}`,
+              quantity: 1,
+              price: formatCurrency(group.total),
+            },
+            ...group.lines.map((line) => ({
+              name: `  · ${line.pieceName} (${line.variantLabel})`,
+              quantity: line.quantity,
+              price: formatCurrency(line.priceAtPurchase * line.quantity),
+            })),
+          ];
+        }
+        const item = order.items.find(
+          (row) =>
+            row.productName === group.line.productName &&
+            row.variantLabel === group.line.variantLabel
+        );
+        return [
+          {
+            name:
+              item?.lineType === "gift_card"
+                ? group.line.productName
+                : `${group.line.productName} (${group.line.variantLabel})`,
+            quantity: group.line.quantity,
+            price: formatCurrency(group.total),
+          },
+        ];
+      }),
     });
 
     if (!sent) return false;

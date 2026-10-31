@@ -1,7 +1,10 @@
 import { useState, type MouseEvent } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Link } from "react-router";
+import { cloudinaryImageUrl, cloudinarySrcSet } from "~/lib/cloudinary";
 import { cn } from "~/lib/utils";
+
+const CARD_WIDTHS = [320, 480, 600, 800];
 
 export function CardImageCarousel({
   images,
@@ -22,9 +25,13 @@ export function CardImageCarousel({
   const count = images.length;
   const current = count > 0 ? images[index % count] : undefined;
   const src = current
-    ? current.publicId.startsWith("http")
-      ? current.publicId
-      : `https://res.cloudinary.com/${cloudName ?? "demo"}/image/upload/f_auto,q_auto,w_600/${current.publicId}`
+    ? cloudinaryImageUrl(current.publicId, cloudName, 600) ??
+      (current.publicId.startsWith("http") || current.publicId.startsWith("/")
+        ? current.publicId
+        : null)
+    : null;
+  const srcSet = current
+    ? cloudinarySrcSet(current.publicId, cloudName, CARD_WIDTHS)
     : null;
 
   function step(event: MouseEvent, direction: -1 | 1) {
@@ -40,8 +47,11 @@ export function CardImageCarousel({
           {src ? (
             <img
               src={src}
+              srcSet={srcSet ?? undefined}
+              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 280px"
               alt={current?.alt || alt}
               loading="lazy"
+              decoding="async"
               className={cn("aspect-[3/4] w-full object-cover", imageClassName)}
             />
           ) : (
@@ -51,8 +61,11 @@ export function CardImageCarousel({
       ) : src ? (
         <img
           src={src}
+          srcSet={srcSet ?? undefined}
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 280px"
           alt={current?.alt || alt}
           loading="lazy"
+          decoding="async"
           className={cn("aspect-[3/4] w-full object-cover", imageClassName)}
         />
       ) : (

@@ -4,6 +4,7 @@ import { Badge, Card } from "~/components/ui/Badge";
 import { Button } from "~/components/ui/Button";
 import { DatabaseUnavailable } from "~/components/admin/DatabaseUnavailable";
 import { db, isDatabaseAvailable } from "~/db.server";
+import { groupOrderLines } from "~/lib/order-line-groups";
 import { getStripe } from "~/lib/stripe.server";
 import { formatCurrency } from "~/lib/utils";
 import { requireAdmin } from "~/lib/session.server";
@@ -192,21 +193,64 @@ export default function AdminOrdersDetail({ loaderData, actionData }: Route.Comp
             </tr>
           </thead>
           <tbody>
-            {order.items.map((item) => (
-              <tr key={item.id} className="border-b border-charcoal/5">
-                <td className="py-2">
-                  {item.productName}
-                  {item.lineType === "gift_card" && (
-                    <Badge variant="default" className="ml-2">
-                      E-gift
-                    </Badge>
-                  )}
-                </td>
-                <td className="py-2 text-charcoal/60">{item.variantLabel}</td>
-                <td className="py-2">{item.quantity}</td>
-                <td className="py-2 text-right">{formatCurrency(item.priceAtPurchase)}</td>
-              </tr>
-            ))}
+            {groupOrderLines(
+              order.items.map((item) => ({
+                productName: item.productName,
+                variantLabel: item.variantLabel,
+                quantity: item.quantity,
+                priceAtPurchase: item.priceAtPurchase,
+              }))
+            ).flatMap((group, groupIndex) => {
+              if (group.kind === "bundle") {
+                return [
+                  <tr key={`bundle-${group.name}-${groupIndex}`} className="border-b border-charcoal/10 bg-sand/40">
+                    <td className="py-2 font-medium text-navy" colSpan={3}>
+                      Bundle: {group.name}
+                    </td>
+                    <td className="py-2 text-right font-medium">
+                      {formatCurrency(group.total)}
+                    </td>
+                  </tr>,
+                  ...group.lines.map((line, lineIndex) => (
+                    <tr
+                      key={`bundle-line-${group.name}-${line.pieceName}-${lineIndex}`}
+                      className="border-b border-charcoal/5"
+                    >
+                      <td className="py-2 pl-6 text-charcoal/80">{line.pieceName}</td>
+                      <td className="py-2 text-charcoal/60">{line.variantLabel}</td>
+                      <td className="py-2">{line.quantity}</td>
+                      <td className="py-2 text-right">
+                        {formatCurrency(line.priceAtPurchase)}
+                      </td>
+                    </tr>
+                  )),
+                ];
+              }
+
+              const item = order.items.find(
+                (row) =>
+                  row.productName === group.line.productName &&
+                  row.variantLabel === group.line.variantLabel &&
+                  row.quantity === group.line.quantity
+              );
+              return [
+                <tr key={`single-${groupIndex}`} className="border-b border-charcoal/5">
+                  <td className="py-2">
+                    {group.line.productName}
+                    {item?.lineType === "gift_card" && (
+                      <Badge variant="default" className="ml-2">
+                        E-gift
+                      </Badge>
+                    )}
+                  </td>
+                  <td className="py-2 text-charcoal/60">{group.line.variantLabel}</td>
+                  <td className="py-2">{group.line.quantity}</td>
+                  <td className="py-2 text-right">
+                    {formatCurrency(group.line.priceAtPurchase)}
+                  </td>
+                </tr>,
+              ];
+            })}
           </tbody>
         </table>
       </Card>

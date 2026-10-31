@@ -25,6 +25,8 @@ export type CartItem = {
   giftAmount?: number;
   recipientEmail?: string;
   giftNote?: string;
+  setGroupId?: string;
+  packGroupId?: string;
 };
 
 export type Phase1Data = {

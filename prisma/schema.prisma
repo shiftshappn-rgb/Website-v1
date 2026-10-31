@@ -301,11 +301,12 @@ model Pack {
 }
 
 model PackItem {
-  id        String @id @default(cuid())
-  packId    String
-  bundleId  String?
-  productId String?
-  sortOrder Int    @default(0)
+  id         String  @id @default(cuid())
+  packId     String
+  bundleId   String?
+  productId  String?
+  isPrimary  Boolean @default(false)
+  sortOrder  Int     @default(0)
 
   pack    Pack     @relation(fields: [packId], references: [id], onDelete: Cascade)
   bundle  Bundle?  @relation(fields: [bundleId], references: [id], onDelete: Cascade)

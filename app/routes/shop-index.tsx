@@ -2,6 +2,7 @@ import type { Route } from "./+types/shop-index";
 import { ProductGrid } from "~/components/storefront/ProductCard";
 import { ShopFilters } from "~/components/storefront/ShopFilters";
 import { loadShopListing } from "~/lib/catalog.server";
+import { catalogHeaders } from "~/lib/http-cache";
 import { buildMeta } from "~/lib/seo";
 
 export function meta({}: Route.MetaArgs) {
@@ -10,6 +11,10 @@ export function meta({}: Route.MetaArgs) {
     description: "Browse all premium medical scrubs from shiftshappn.",
     path: "/shop",
   });
+}
+
+export function headers() {
+  return catalogHeaders();
 }
 
 export async function loader({ request }: Route.LoaderArgs) {

@@ -9,12 +9,14 @@ export function GiftCardPreview({
 }) {
   return (
     <div
-      className={`relative overflow-hidden rounded-[1.75rem] bg-sky text-white shadow-[0_24px_60px_-24px_rgba(17,26,34,0.35)] ${
-        compact ? "aspect-[4/5] max-h-[420px]" : "aspect-[4/5] min-h-[420px] lg:min-h-[520px]"
+      className={`relative overflow-hidden rounded-[1.5rem] bg-sky text-white shadow-[0_24px_60px_-24px_rgba(17,26,34,0.35)] sm:rounded-[1.75rem] ${
+        compact
+          ? "aspect-4/5 max-h-[420px]"
+          : "aspect-4/5 max-h-[min(70vh,28rem)] w-full min-h-0 sm:max-h-none sm:min-h-[420px] lg:min-h-[520px]"
       }`}
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.18),transparent_42%),radial-gradient(circle_at_80%_80%,rgba(29,78,120,0.35),transparent_48%)]" />
-      <div className="relative flex h-full flex-col items-center justify-between px-8 py-10 text-center">
+      <div className="relative flex h-full flex-col items-center justify-between px-6 py-8 text-center sm:px-8 sm:py-10">
         <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-white/80">
           E-gift card
         </p>

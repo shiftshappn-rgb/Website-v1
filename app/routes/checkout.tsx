@@ -9,6 +9,7 @@ import {
 } from "~/lib/session.server";
 import { isGoogleOAuthConfigured } from "~/lib/google-auth.server";
 import { GoogleSignInButton } from "~/components/auth/GoogleSignInButton";
+import { OrderLineGroups } from "~/components/storefront/OrderLineGroups";
 import { resolveDiscountCode, resolveGiftCard } from "~/lib/commerce.server";
 import { buildMeta } from "~/lib/seo";
 import { useCheckout } from "~/lib/checkout-context";
@@ -78,6 +79,8 @@ export async function action({ request }: Route.ActionArgs) {
     giftAmount?: number;
     recipientEmail?: string;
     giftNote?: string;
+    setGroupId?: string;
+    packGroupId?: string;
   }> = [];
 
   try {
@@ -141,15 +144,25 @@ export async function action({ request }: Route.ActionArgs) {
       );
     }
 
-    const price = Number(variant.product.basePrice);
-    const finalPrice = variant.priceOverride ? Number(variant.priceOverride) : price;
+    const isGrouped = Boolean(item.packGroupId || item.setGroupId);
+    const catalogPrice = variant.priceOverride
+      ? Number(variant.priceOverride)
+      : Number(variant.product.basePrice);
+    // Bundle/set lines keep the allocated share from the cart so checkout
+    // subtotals match the discounted price shown on the PDP and in the drawer.
+    const finalPrice =
+      isGrouped && Number.isFinite(item.price) && item.price >= 0
+        ? item.price
+        : catalogPrice;
     lineItems.push({
       kind: "product",
       variantId: variant.id,
       quantity: item.quantity,
       price: finalPrice,
-      productName: variant.product.name,
-      variantLabel: `${variant.colorName} / ${variant.size}`,
+      productName: isGrouped ? item.productName : variant.product.name,
+      variantLabel: isGrouped
+        ? item.variantLabel
+        : `${variant.colorName} / ${variant.size}`,
     });
   }
 
@@ -272,7 +285,17 @@ function OrderSummary({
   discountCode,
   giftCardCode,
 }: {
-  items: Array<{ variantId: string; productName: string; variantLabel: string; colorHex: string; price: number; quantity: number; kind?: string }>;
+  items: Array<{
+    variantId: string;
+    productName: string;
+    variantLabel: string;
+    colorHex: string;
+    price: number;
+    quantity: number;
+    kind?: string;
+    packGroupId?: string;
+    setGroupId?: string;
+  }>;
   subtotal: number;
   discountAmount: number;
   giftCardAmount: number;
@@ -282,33 +305,22 @@ function OrderSummary({
   discountCode: string;
   giftCardCode: string;
 }) {
+  const summaryItems = items.map((item) => ({
+    productName: item.productName,
+    variantLabel: item.variantLabel,
+    quantity: item.quantity,
+    priceAtPurchase: item.price,
+  }));
+
   return (
     <div className="rounded-2xl border border-[#e5e0d8] bg-white overflow-hidden">
       <div className="px-6 py-5 border-b border-[#e5e0d8]">
         <h2 className="font-serif text-base font-semibold text-[#1b2a4a]">Order Summary</h2>
       </div>
 
-      {/* Items */}
-      <ul className="divide-y divide-[#f0ece6] px-6">
-        {items.map((item) => (
-          <li key={item.variantId} className="flex items-center gap-3 py-4">
-            {/* Color swatch / gift icon */}
-            <div
-              className="size-10 rounded-lg flex-shrink-0 flex items-center justify-center text-white text-xs font-bold shadow-inner"
-              style={{ backgroundColor: item.colorHex || "#1b2a4a" }}
-            >
-              {item.kind === "gift_card" ? "🎁" : item.quantity > 1 ? `×${item.quantity}` : ""}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-[#1b2a4a] truncate">{item.productName}</p>
-              <p className="text-xs text-[#888] truncate">{item.variantLabel}</p>
-            </div>
-            <span className="text-sm font-semibold text-[#1b2a4a] tabular-nums">
-              {formatCurrency(item.price * item.quantity)}
-            </span>
-          </li>
-        ))}
-      </ul>
+      <div className="px-6 py-4">
+        <OrderLineGroups items={summaryItems} className="space-y-4" />
+      </div>
 
       {/* Totals */}
       <div className="px-6 py-5 bg-[#faf8f5] space-y-2 text-sm border-t border-[#e5e0d8]">
@@ -373,6 +385,8 @@ function CheckoutForm() {
     giftAmount: item.giftAmount,
     recipientEmail: item.recipientEmail,
     giftNote: item.giftNote,
+    setGroupId: item.setGroupId,
+    packGroupId: item.packGroupId,
   }));
 
   const [discountCode, setDiscountCode] = useState("");

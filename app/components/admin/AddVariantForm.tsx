@@ -3,8 +3,15 @@ import { Link, useFetcher, useRevalidator } from "react-router";
 import { ColorHexInput } from "~/components/admin/ColorHexInput";
 import { Button } from "~/components/ui/Button";
 import { Input, Select } from "~/components/ui/Input";
+import {
+  ACCESSORY_DEFAULT_COLOR,
+  ACCESSORY_DEFAULT_COLOR_HEX,
+  ACCESSORY_DEFAULT_SIZE,
+} from "~/lib/accessories";
 import { buildVariantSku, CATALOG_SIZES } from "~/lib/product-catalog";
 import { cn } from "~/lib/utils";
+
+const ACCESSORY_SIZES = [ACCESSORY_DEFAULT_SIZE, ...CATALOG_SIZES] as const;
 
 type ActionResult = {
   error?: string;
@@ -43,19 +50,30 @@ export function AddVariantForm({
   productSlug,
   catalogColors,
   existingVariants,
+  isAccessory = false,
 }: {
   productSlug: string;
   catalogColors: CatalogColor[];
   existingVariants: ExistingVariant[];
+  isAccessory?: boolean;
 }) {
   const fetcher = useFetcher<ActionResult>();
   const revalidator = useRevalidator();
+  const sizeOptions = isAccessory ? ACCESSORY_SIZES : CATALOG_SIZES;
   const [mode, setMode] = useState<Mode>("quick");
   const [formKey, setFormKey] = useState(0);
-  const [colorName, setColorName] = useState("");
-  const [colorHex, setColorHex] = useState("#B07A7A");
-  const [size, setSize] = useState<string>(CATALOG_SIZES[2]);
-  const [selectedSizes, setSelectedSizes] = useState<string[]>([...CATALOG_SIZES]);
+  const [colorName, setColorName] = useState(
+    isAccessory ? ACCESSORY_DEFAULT_COLOR : ""
+  );
+  const [colorHex, setColorHex] = useState(
+    isAccessory ? ACCESSORY_DEFAULT_COLOR_HEX : "#B07A7A"
+  );
+  const [size, setSize] = useState<string>(
+    isAccessory ? ACCESSORY_DEFAULT_SIZE : CATALOG_SIZES[2]
+  );
+  const [selectedSizes, setSelectedSizes] = useState<string[]>(
+    isAccessory ? [ACCESSORY_DEFAULT_SIZE] : [...CATALOG_SIZES]
+  );
   const [matrixColors, setMatrixColors] = useState<CatalogColor[]>([]);
   const [inventoryQty, setInventoryQty] = useState("0");
   const [inventoryByKey, setInventoryByKey] = useState<Record<string, string>>({});
@@ -74,17 +92,17 @@ export function AddVariantForm({
 
     setHandledSuccess(success);
     setFormKey((key) => key + 1);
-    setColorName("");
-    setColorHex("#B07A7A");
-    setSize(CATALOG_SIZES[2]);
-    setSelectedSizes([...CATALOG_SIZES]);
+    setColorName(isAccessory ? ACCESSORY_DEFAULT_COLOR : "");
+    setColorHex(isAccessory ? ACCESSORY_DEFAULT_COLOR_HEX : "#B07A7A");
+    setSize(isAccessory ? ACCESSORY_DEFAULT_SIZE : CATALOG_SIZES[2]);
+    setSelectedSizes(isAccessory ? [ACCESSORY_DEFAULT_SIZE] : [...CATALOG_SIZES]);
     setMatrixColors([]);
     setInventoryQty("0");
     setInventoryByKey({});
     setPriceOverride("");
     setMode("quick");
     revalidator.revalidate();
-  }, [fetcher.state, fetcher.data, handledSuccess, revalidator]);
+  }, [fetcher.state, fetcher.data, handledSuccess, revalidator, isAccessory]);
 
   function toggleSize(value: string) {
     setSelectedSizes((current) =>
@@ -228,7 +246,9 @@ export function AddVariantForm({
   return (
     <div className="rounded-lg border border-dashed border-charcoal/20 p-4">
       <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="font-medium text-navy">Add variants</h3>
+        <h3 className="font-medium text-navy">
+          {isAccessory ? "Add stock" : "Add variants"}
+        </h3>
         <Link
           to="/admin/colors"
           className="text-xs font-medium text-navy underline underline-offset-4 hover:text-terracotta"
@@ -236,6 +256,13 @@ export function AddVariantForm({
           Manage colours
         </Link>
       </div>
+
+      {isAccessory && (
+        <p className="mb-4 text-sm text-charcoal/60">
+          Most accessories use Default / One Size. Add more colours or sizes only if this
+          product needs them.
+        </p>
+      )}
 
       <div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label="Variant creation mode">
         {MODES.map((item) => {
@@ -286,7 +313,7 @@ export function AddVariantForm({
               value={size}
               onChange={(event) => setSize(event.target.value)}
             >
-              {CATALOG_SIZES.map((value) => (
+              {sizeOptions.map((value) => (
                 <option key={value} value={value}>
                   {value}
                 </option>
@@ -312,9 +339,10 @@ export function AddVariantForm({
 
         {mode === "colour-sizes" && (
           <SizePillGroup
+            sizes={[...sizeOptions]}
             selected={selectedSizes}
             onToggle={toggleSize}
-            onSelectAll={() => setSelectedSizes([...CATALOG_SIZES])}
+            onSelectAll={() => setSelectedSizes([...sizeOptions])}
             onClear={() => setSelectedSizes([])}
           />
         )}
@@ -375,9 +403,10 @@ export function AddVariantForm({
               )}
             </div>
             <SizePillGroup
+              sizes={[...sizeOptions]}
               selected={selectedSizes}
               onToggle={toggleSize}
-              onSelectAll={() => setSelectedSizes([...CATALOG_SIZES])}
+              onSelectAll={() => setSelectedSizes([...sizeOptions])}
               onClear={() => setSelectedSizes([])}
             />
           </>
@@ -452,17 +481,19 @@ export function AddVariantForm({
 }
 
 function SizePillGroup({
+  sizes = [...CATALOG_SIZES],
   selected,
   onToggle,
   onSelectAll,
   onClear,
 }: {
+  sizes?: string[];
   selected: string[];
   onToggle: (size: string) => void;
   onSelectAll: () => void;
   onClear: () => void;
 }) {
-  const allSelected = selected.length === CATALOG_SIZES.length;
+  const allSelected = sizes.length > 0 && selected.length === sizes.length;
 
   return (
     <div className="space-y-2">
@@ -477,7 +508,7 @@ function SizePillGroup({
         </button>
       </div>
       <div className="flex flex-wrap gap-2">
-        {CATALOG_SIZES.map((value) => {
+        {sizes.map((value) => {
           const active = selected.includes(value);
           return (
             <button

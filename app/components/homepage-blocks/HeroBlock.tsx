@@ -49,33 +49,23 @@ export function HeroBlock({
 
         <ChromaKeyFilter />
 
-        {/* Models as cut-outs in front of the poster — centered for focus */}
+        {/* Models as cut-outs — only the active audience image is in the DOM (halves LCP bytes). */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 top-[6%] z-30 overflow-hidden sm:inset-y-0">
           <div className="hero-model-floor" />
-          {AUDIENCES.map((option) => {
-            const visible = audience === option;
-            return (
-              <div
-                key={option}
-                className={`hero-chroma-shell absolute inset-0 transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-opacity ${
-                  visible
-                    ? "translate-x-0 opacity-100"
-                    : "pointer-events-none translate-x-4 opacity-0"
-                }`}
-              >
-                <img
-                  src={HERO_IMAGES[option]}
-                  alt={visible ? HERO_COPY[option].alt : ""}
-                  width={900}
-                  height={1200}
-                  fetchPriority={option === "women" ? "high" : "low"}
-                  decoding="async"
-                  aria-hidden={!visible}
-                  className="hero-chroma-model"
-                />
-              </div>
-            );
-          })}
+          <div
+            key={audience}
+            className="hero-chroma-shell absolute inset-0 animate-enter-left"
+          >
+            <img
+              src={HERO_IMAGES[audience]}
+              alt={HERO_COPY[audience].alt}
+              width={900}
+              height={1200}
+              fetchPriority="high"
+              decoding="async"
+              className="hero-chroma-model"
+            />
+          </div>
         </div>
 
         {/* Soft bottom wash so CTAs stay readable */}
