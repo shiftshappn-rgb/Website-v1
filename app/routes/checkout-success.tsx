@@ -80,6 +80,7 @@ function serializeOrder(order: {
   email: string;
   total: { toString(): string } | number;
   status: string;
+  deliveryCode?: string | null;
   items: Array<{
     productName: string;
     variantLabel: string;
@@ -92,6 +93,7 @@ function serializeOrder(order: {
     email: order.email,
     total: Number(order.total),
     status: order.status,
+    deliveryCode: order.deliveryCode ?? null,
     items: order.items.map((item) => ({
       productName: item.productName,
       variantLabel: item.variantLabel,
@@ -122,6 +124,19 @@ export default function CheckoutSuccess({ loaderData }: Route.ComponentProps) {
               email has been sent to {order.email}.
             </p>
             <p className="mb-8 text-2xl font-medium text-navy">{formatCurrency(order.total)}</p>
+            {order.deliveryCode ? (
+              <div className="mb-8 rounded-2xl border border-navy/10 bg-white p-6 text-center shadow-[0_14px_36px_rgba(17,26,34,0.05)]">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-navy/45">
+                  Delivery code
+                </p>
+                <p className="mt-2 font-mono text-3xl font-semibold tracking-[0.25em] text-navy">
+                  {order.deliveryCode}
+                </p>
+                <p className="mt-3 text-sm text-charcoal/60">
+                  Show this code when you receive your order so we can mark it fulfilled.
+                </p>
+              </div>
+            ) : null}
             <div className="mb-8 rounded-xl border border-charcoal/10 bg-white p-6 text-left">
               <OrderLineGroups items={order.items} className="space-y-4" />
             </div>

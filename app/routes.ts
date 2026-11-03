@@ -60,6 +60,7 @@ export default [
   ]),
   route("checkout/success", "routes/checkout-success.tsx"),
   route("api/checkout", "routes/api-checkout.ts"),
+  route("api/checkout/payment", "routes/api-checkout-payment.ts"),
   route("api/search", "routes/api-search.ts"),
   route("api/webhook", "routes/api-webhook.ts"),
   route("sitemap.xml", "routes/sitemap.ts"),

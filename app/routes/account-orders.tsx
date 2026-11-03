@@ -3,6 +3,10 @@ import type { Route } from "./+types/account-orders";
 import { OrderLineGroups } from "~/components/storefront/OrderLineGroups";
 import { requireCustomer } from "~/lib/session.server";
 import { tryDb } from "~/db.server";
+import {
+  ORDER_STATUS_BADGE_CLASS,
+  orderStatusLabel,
+} from "~/lib/order-status";
 import { buildMeta } from "~/lib/seo";
 import { cn, formatCurrency } from "~/lib/utils";
 
@@ -35,6 +39,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       shipping: Number(order.shipping),
       tax: Number(order.tax),
       status: order.status,
+      deliveryCode: order.deliveryCode,
       createdAt: order.createdAt.toISOString(),
       items: order.items.map((item) => ({
         productName: item.productName,
@@ -48,35 +53,20 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 const STATUS_FILTERS = [
   { value: "all", label: "All" },
-  { value: "paid", label: "Paid" },
+  { value: "received", label: "Received" },
+  { value: "processing", label: "Processing" },
   { value: "fulfilled", label: "Fulfilled" },
-  { value: "pending", label: "Pending" },
+  { value: "refund_initiated", label: "Refund initiated" },
   { value: "refunded", label: "Refunded" },
+  { value: "pending", label: "Pending" },
   { value: "cancelled", label: "Cancelled" },
 ] as const;
 
-const ORDER_STATUS_STYLES: Record<string, string> = {
-  paid: "bg-sky/15 text-navy",
-  fulfilled: "bg-emerald-50 text-emerald-800",
-  refunded: "bg-red-50 text-red-700",
-  pending: "bg-sand text-charcoal/70",
-  cancelled: "bg-charcoal/5 text-charcoal/55",
-};
-
-const ORDER_STATUS_LABELS: Record<string, string> = {
-  paid: "Paid",
-  fulfilled: "Fulfilled",
-  refunded: "Refunded",
-  pending: "Pending",
-  cancelled: "Cancelled",
-};
-
 function orderStatusClass(status: string) {
-  return ORDER_STATUS_STYLES[status] ?? "bg-charcoal/5 text-charcoal/60";
-}
-
-function orderStatusLabel(status: string) {
-  return ORDER_STATUS_LABELS[status] ?? status;
+  return (
+    ORDER_STATUS_BADGE_CLASS[status as keyof typeof ORDER_STATUS_BADGE_CLASS] ??
+    "bg-charcoal/5 text-charcoal/60"
+  );
 }
 
 function itemCount(items: { quantity: number }[]) {
@@ -286,6 +276,23 @@ export default function AccountOrders({ loaderData }: Route.ComponentProps) {
                         </header>
 
                         <div className="px-5 py-5 sm:px-6">
+                          {order.deliveryCode &&
+                          order.status !== "fulfilled" &&
+                          order.status !== "refunded" &&
+                          order.status !== "cancelled" ? (
+                            <div className="mb-5 rounded-xl border border-navy/10 bg-sand/50 px-4 py-3">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-navy/50">
+                                Delivery code
+                              </p>
+                              <p className="mt-1 font-mono text-2xl font-semibold tracking-[0.2em] text-navy">
+                                {order.deliveryCode}
+                              </p>
+                              <p className="mt-1.5 text-xs text-charcoal/55">
+                                Show this code when you receive your order.
+                              </p>
+                            </div>
+                          ) : null}
+
                           <OrderLineGroups items={order.items} className="space-y-3" />
 
                           <dl className="mt-5 space-y-1.5 border-t border-charcoal/8 pt-4 text-sm">

@@ -7,6 +7,7 @@ import { AdminDataTable, AdminRowActions } from "~/components/admin/AdminDataTab
 import { DatabaseUnavailable } from "~/components/admin/DatabaseUnavailable";
 import { Badge } from "~/components/ui/shadcn-badge";
 import { db, isDatabaseAvailable } from "~/db.server";
+import { orderStatusLabel } from "~/lib/order-status";
 import { formatCurrency } from "~/lib/utils";
 import { requireAdmin } from "~/lib/session.server";
 
@@ -93,8 +94,17 @@ export default function AdminOrdersIndex({ loaderData }: Route.ComponentProps) {
         header: "Status",
         accessorKey: "status",
         cell: ({ row }) => (
-          <Badge variant={row.original.status === "fulfilled" ? "default" : "secondary"}>
-            {row.original.status}
+          <Badge
+            variant={
+              row.original.status === "fulfilled"
+                ? "default"
+                : row.original.status === "refunded" ||
+                    row.original.status === "refund_initiated"
+                  ? "destructive"
+                  : "secondary"
+            }
+          >
+            {orderStatusLabel(row.original.status)}
           </Badge>
         ),
         filterFn: statusFilterFn,

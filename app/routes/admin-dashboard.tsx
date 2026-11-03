@@ -18,16 +18,19 @@ import { cloudinaryImageUrl } from "~/lib/cloudinary";
 import { requireAdmin } from "~/lib/session.server";
 import { formatCurrency, parseVariantImages } from "~/lib/utils";
 import type { OrderStatus, ProductStatus } from "@prisma/client";
+import { orderStatusLabel, PURCHASE_ACTIVE_STATUSES } from "~/lib/order-status";
 
-const paidStatuses = ["paid", "fulfilled"] as const;
+const revenueStatuses = PURCHASE_ACTIVE_STATUSES;
 
 const orderStatusVariant: Record<
   OrderStatus,
   "default" | "success" | "warning" | "error" | "terracotta"
 > = {
   pending: "warning",
-  paid: "terracotta",
+  received: "terracotta",
+  processing: "warning",
   fulfilled: "success",
+  refund_initiated: "warning",
   refunded: "default",
   cancelled: "error",
 };
@@ -74,7 +77,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     lowStock,
   ] = await Promise.all([
     db.order.findMany({
-      where: { status: { in: [...paidStatuses] }, createdAt: { gte: chartStart } },
+      where: { status: { in: [...revenueStatuses] }, createdAt: { gte: chartStart } },
       select: { total: true, createdAt: true },
     }),
     db.order.findMany({
@@ -88,7 +91,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       orderBy: { _sum: { quantity: "desc" } },
       take: 5,
     }),
-    db.order.count({ where: { status: "paid" } }),
+    db.order.count({ where: { status: { in: ["received", "processing"] } } }),
     db.product.groupBy({
       by: ["status"],
       _count: { _all: true },
@@ -243,7 +246,7 @@ export default function AdminDashboard({ loaderData }: Route.ComponentProps) {
         <KpiCard
           label="Week sales"
           value={formatCurrency(stats.weekRevenue)}
-          hint={`${stats.todayOrderCount} paid today · ${formatCurrency(stats.todayRevenue)}`}
+          hint={`${stats.todayOrderCount} received today · ${formatCurrency(stats.todayRevenue)}`}
         />
         <KpiCard
           label="Week orders"
@@ -253,7 +256,7 @@ export default function AdminDashboard({ loaderData }: Route.ComponentProps) {
         <KpiCard
           label="To fulfill"
           value={String(stats.awaitingFulfillment)}
-          hint="Paid, not yet shipped"
+          hint="Received or processing"
           tone={stats.awaitingFulfillment > 0 ? "alert" : "ok"}
         />
         <KpiCard
@@ -269,7 +272,7 @@ export default function AdminDashboard({ loaderData }: Route.ComponentProps) {
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="font-serif text-lg text-navy">Sales this week</h2>
-              <p className="text-sm text-charcoal/55">Paid and fulfilled orders, last 7 days</p>
+              <p className="text-sm text-charcoal/55">Received through fulfilled orders, last 7 days</p>
             </div>
             <span className="tabular-nums text-sm font-medium text-navy">
               {formatCurrency(stats.weekRevenue)}
@@ -304,7 +307,7 @@ export default function AdminDashboard({ loaderData }: Route.ComponentProps) {
           <h2 className="font-serif text-lg text-navy">Needs attention</h2>
           <ul className="divide-y divide-charcoal/10">
             <AttentionRow
-              href="/admin/orders?status=paid"
+              href="/admin/orders?status=received"
               icon={<ClipboardList className="size-4" aria-hidden />}
               label="Orders to fulfill"
               value={stats.awaitingFulfillment}
@@ -379,7 +382,9 @@ export default function AdminDashboard({ loaderData }: Route.ComponentProps) {
                     <td className="max-w-[140px] truncate px-4 py-3 text-charcoal/80">{order.email}</td>
                     <td className="hidden px-4 py-3 tabular-nums text-charcoal/70 md:table-cell">{order.itemCount}</td>
                     <td className="px-4 py-3">
-                      <Badge variant={orderStatusVariant[order.status]}>{order.status}</Badge>
+                      <Badge variant={orderStatusVariant[order.status]}>
+                        {orderStatusLabel(order.status)}
+                      </Badge>
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums font-medium text-navy md:px-6">
                       {formatCurrency(order.total)}
@@ -401,7 +406,7 @@ export default function AdminDashboard({ loaderData }: Route.ComponentProps) {
             </Link>
           </div>
           {topProducts.length === 0 ? (
-            <p className="text-sm text-charcoal/60">No paid units yet.</p>
+            <p className="text-sm text-charcoal/60">No sold units yet.</p>
           ) : (
             <ol className="space-y-3">
               {topProducts.map((product, index) => {

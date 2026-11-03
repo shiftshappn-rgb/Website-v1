@@ -1,7 +1,7 @@
 import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { data, redirect, Link, useLoaderData, useRouteLoaderData } from "react-router";
+import { Link, useLoaderData, useRouteLoaderData } from "react-router";
 import type { Route } from "./+types/checkout-payment";
 import {
   StripePaymentSection,
@@ -13,17 +13,7 @@ import { tryDb } from "~/db.server";
 import { useCart } from "~/lib/cart";
 import { useCheckout } from "~/lib/checkout-context";
 import type { CartItem } from "~/lib/checkout-context";
-import { generateGiftCardCode } from "~/lib/commerce.server";
-import { sendGiftCardEmail } from "~/lib/email.server";
-import { checkoutSuccessPath } from "~/lib/order-access.server";
-import { deliverOrderConfirmation, recordPaidOrder } from "~/lib/paid-order.server";
-import { getCustomer } from "~/lib/session.server";
-import {
-  createCheckoutPaymentIntent,
-  dollarsToCents,
-  getStripePublishableKey,
-  retrieveSucceededPaymentIntent,
-} from "~/lib/stripe.server";
+import { getStripePublishableKey } from "~/lib/stripe.server";
 import {
   computeTaxAmount,
   DEFAULT_TAX_RATE_PERCENT,
@@ -80,270 +70,20 @@ function computeTotals(phase1: Phase1, phase2: Phase2, taxRatePercent: number) {
   };
 }
 
-function buildAddresses(phase1: Phase1, phase2: Phase2) {
-  const isHospitalOrClinic =
-    phase2.deliveryLocationType === "hospital" || phase2.deliveryLocationType === "clinic";
-
-  const shippingAddress = isHospitalOrClinic
-    ? {
-        name: phase1.email ?? "",
-        line1: "",
-        city: "Halifax",
-        province: "NS",
-        postalCode: "",
-        country: "CA",
-      }
-    : {
-        name: phase2.billingAddress?.name || phase1.email || "",
-        line1: phase2.billingAddress?.line1 || "",
-        line2: phase2.billingAddress?.line2 || "",
-        city: phase2.billingAddress?.city || "",
-        province: phase2.billingAddress?.province || "",
-        postalCode: phase2.billingAddress?.postalCode || "",
-        country: phase2.billingAddress?.country || "CA",
-      };
-
-  return {
-    shippingAddress,
-    billingAddress: phase2.billingAddress || shippingAddress,
-  };
-}
-
 export async function loader(_args: Route.LoaderArgs) {
-  const publishableKey = getStripePublishableKey();
+  const publishableKey = getStripePublishableKey().trim();
+  const secretKey = (process.env.STRIPE_SECRET_KEY ?? "").trim();
   const taxRatePercent = await loadTaxRatePercent(tryDb());
   return {
     publishableKey,
-    stripeConfigured: Boolean(publishableKey && process.env.STRIPE_SECRET_KEY),
+    stripeConfigured: Boolean(publishableKey && secretKey),
+    stripeMissing: !secretKey
+      ? ("secret" as const)
+      : !publishableKey
+        ? ("publishable" as const)
+        : null,
     taxRatePercent,
   };
-}
-
-export async function action({ request }: Route.ActionArgs) {
-  const formData = await request.formData();
-  const intent = String(formData.get("intent") ?? "place-order");
-
-  const db = tryDb();
-  if (!db) return data({ error: "Store unavailable" }, { status: 503 });
-
-  let phase1: Phase1;
-  let phase2: Phase2;
-  let cartItems: CartItem[];
-  try {
-    phase1 = JSON.parse(String(formData.get("phase1") ?? "null"));
-    phase2 = JSON.parse(String(formData.get("phase2") ?? "null"));
-    cartItems = JSON.parse(String(formData.get("cartItems") ?? "[]"));
-  } catch {
-    return data({ error: "Invalid form data" }, { status: 400 });
-  }
-
-  if (!phase1 || !phase2) {
-    return data({ error: "Missing prior phase data" }, { status: 400 });
-  }
-  if (!phase1.email?.trim()) {
-    return data({ error: "Email is required." }, { status: 400 });
-  }
-  if (!Array.isArray(cartItems) || cartItems.length === 0) {
-    return data({ error: "Your cart is empty." }, { status: 400 });
-  }
-
-  const taxRatePercent = await loadTaxRatePercent(db);
-  const totals = computeTotals(phase1, phase2, taxRatePercent);
-
-  if (intent === "create-payment-intent") {
-    if (totals.total <= 0) {
-      return data({ clientSecret: null, paymentIntentId: null, amountCents: 0 });
-    }
-    try {
-      const paymentIntent = await createCheckoutPaymentIntent({
-        amountCad: totals.total,
-        email: phase1.email.trim(),
-        metadata: {
-          amountCad: String(totals.total),
-        },
-      });
-      return data({
-        clientSecret: paymentIntent.client_secret,
-        paymentIntentId: paymentIntent.id,
-        amountCents: paymentIntent.amount,
-      });
-    } catch (error) {
-      console.error("[checkout] PaymentIntent create failed:", error);
-      const message =
-        error instanceof Error ? error.message : "Unable to start payment.";
-      return data({ error: message }, { status: 500 });
-    }
-  }
-
-  if (intent !== "place-order") {
-    return data({ error: "Unknown intent" }, { status: 400 });
-  }
-
-  if (formData.get("agreePolicies") !== "on") {
-    return data(
-      { error: "Please agree to the Delivery, Returns, and Privacy policies." },
-      { status: 400 }
-    );
-  }
-
-  const sessionCustomer = await getCustomer(request);
-  const customerId = sessionCustomer?.id ?? null;
-  const paymentIntentId = String(formData.get("paymentIntentId") ?? "").trim();
-
-  try {
-    if (totals.total > 0) {
-      if (!paymentIntentId) {
-        return data({ error: "Missing payment confirmation." }, { status: 400 });
-      }
-      if (paymentIntentId.startsWith("pi_mock_")) {
-        return data({ error: "Invalid payment." }, { status: 400 });
-      }
-
-      const existing = await db.order.findFirst({
-        where: { stripePaymentIntentId: paymentIntentId },
-        select: { orderNumber: true },
-      });
-      if (existing) {
-        return redirect(checkoutSuccessPath(existing.orderNumber));
-      }
-
-      await retrieveSucceededPaymentIntent(
-        paymentIntentId,
-        dollarsToCents(totals.total)
-      );
-    }
-
-    const orderNumber = `SH-${Date.now().toString(36).slice(2).toUpperCase()}`;
-    const { shippingAddress, billingAddress } = buildAddresses(phase1, phase2);
-
-    const { order } = await recordPaidOrder(db, {
-      orderNumber,
-      email: phase1.email.trim(),
-      customerId,
-      subtotal: totals.subtotal,
-      shipping: totals.shippingCost,
-      tax: totals.tax,
-      total: totals.total,
-      stripePaymentIntentId: totals.total > 0 ? paymentIntentId : null,
-      shippingAddress,
-      billingAddress,
-      deliveryLocationId: phase2.deliveryLocationId,
-      deliveryTimeSlotId: phase2.deliveryTimeSlotId,
-      shippingMethod: phase2.shippingMethod,
-      shippingCost: totals.shippingCost,
-      items: cartItems.map((item) => ({
-        kind: item.kind === "gift_card" ? "gift_card" : "product",
-        variantId: item.kind === "gift_card" ? null : item.variantId,
-        quantity: item.quantity,
-        price: item.giftAmount ?? item.price,
-        productName: item.productName || "Gift Card",
-        variantLabel: item.variantLabel || "",
-      })),
-    });
-
-    try {
-      if (phase1.giftCardCode && totals.giftCardAmount > 0) {
-        const card = await db.giftCard.findUnique({
-          where: { code: String(phase1.giftCardCode).trim().toUpperCase() },
-        });
-        if (card) {
-          await db.giftCard.update({
-            where: { id: card.id },
-            data: {
-              balance: Math.max(0, Number(card.balance) - totals.giftCardAmount),
-            },
-          });
-        }
-      }
-
-      if (phase1.promoCode) {
-        const promo = await db.discountCode.findUnique({
-          where: { code: String(phase1.promoCode).trim().toUpperCase() },
-          select: { id: true },
-        });
-        if (promo) {
-          await db.discountCode.update({
-            where: { id: promo.id },
-            data: { usedCount: { increment: 1 } },
-          });
-        }
-      }
-
-      const hasProducts = cartItems.some((item) => item.kind !== "gift_card");
-      if (customerId && hasProducts) {
-        const points = Math.max(0, Math.floor(totals.subtotal));
-        if (points > 0) {
-          await db.customer.update({
-            where: { id: customerId },
-            data: { loyaltyPoints: { increment: points } },
-          });
-          await db.loyaltyLedger.create({
-            data: {
-              customerId,
-              points,
-              reason: `Order ${order.orderNumber}`,
-              orderId: order.id,
-            },
-          });
-        }
-      }
-
-      for (const item of cartItems) {
-        if (item.kind !== "gift_card") continue;
-        const amount = item.giftAmount ?? item.price;
-        for (let i = 0; i < item.quantity; i++) {
-          const code = generateGiftCardCode();
-          await db.giftCard.create({
-            data: {
-              code,
-              initialAmount: amount,
-              balance: amount,
-              purchaserEmail: phase1.email || null,
-              recipientEmail: item.recipientEmail ?? null,
-              note: item.giftNote ?? null,
-              source: "purchase",
-              orderId: order.id,
-            },
-          });
-          if (item.recipientEmail) {
-            try {
-              await sendGiftCardEmail({
-                to: item.recipientEmail,
-                code,
-                amount: formatCurrency(amount),
-                note: item.giftNote,
-                isRecipient: true,
-              });
-            } catch (error) {
-              console.error("Gift card email failed:", error);
-            }
-          }
-        }
-      }
-
-      if (formData.get("marketingOptIn") === "on" && customerId) {
-        try {
-          await db.customer.update({
-            where: { id: customerId },
-            data: { marketingOptIn: true },
-          });
-        } catch (error) {
-          console.error("Marketing opt-in update failed:", error);
-        }
-      }
-
-      await deliverOrderConfirmation(db, order.id);
-    } catch (error) {
-      console.error("Order follow-up failed:", error);
-    }
-
-    return redirect(checkoutSuccessPath(order.orderNumber));
-  } catch (error) {
-    console.error("Order creation error:", error);
-    const message =
-      error instanceof Error ? error.message : "Failed to place order. Please try again.";
-    return data({ error: message }, { status: 500 });
-  }
 }
 
 function TotalsRow({
@@ -381,8 +121,12 @@ function getStripePromise(publishableKey: string) {
 }
 
 export default function CheckoutPhase3() {
-  const { publishableKey, stripeConfigured, taxRatePercent: loaderTaxRate } =
-    useLoaderData<typeof loader>();
+  const {
+    publishableKey,
+    stripeConfigured,
+    stripeMissing,
+    taxRatePercent: loaderTaxRate,
+  } = useLoaderData<typeof loader>();
   const checkoutLayout = useRouteLoaderData("routes/checkout-layout") as
     | { taxRatePercent?: number }
     | undefined;
@@ -427,7 +171,13 @@ export default function CheckoutPhase3() {
       return;
     }
     if (!stripeConfigured || !publishableKey) {
-      setError("Payments are not configured. Please contact support.");
+      setError(
+        stripeMissing === "secret"
+          ? "Stripe secret key is missing. Add STRIPE_SECRET_KEY to .env (local) or Vercel, then restart/redeploy."
+          : stripeMissing === "publishable"
+            ? "Stripe publishable key is missing. Add STRIPE_PUBLISHABLE_KEY to .env or Vercel, then restart/redeploy."
+            : "Payments are not configured. Please contact support."
+      );
       return;
     }
 
@@ -441,9 +191,22 @@ export default function CheckoutPhase3() {
     body.append("phase2", JSON.stringify(phase2));
     body.append("cartItems", cartKey);
 
-    fetch("/checkout/payment", { method: "POST", body })
+    fetch("/api/checkout/payment", { method: "POST", body })
       .then(async (response) => {
-        const result = await response.json();
+        let result: {
+          error?: string;
+          clientSecret?: string | null;
+          paymentIntentId?: string | null;
+        } = {};
+        try {
+          result = await response.json();
+        } catch {
+          if (!cancelled) {
+            setError("Unable to start payment. Please try again.");
+            setClientSecret(null);
+          }
+          return;
+        }
         if (cancelled) return;
         if (!response.ok) {
           setError(result.error || "Unable to start payment.");
@@ -512,7 +275,7 @@ export default function CheckoutPhase3() {
         body.append("paymentIntentId", confirmedPaymentIntentId);
       }
 
-      const response = await fetch("/checkout/payment", { method: "POST", body });
+      const response = await fetch("/api/checkout/payment", { method: "POST", body });
 
       if (response.redirected) {
         clearCart();

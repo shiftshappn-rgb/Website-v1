@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { runWithDbTransaction } from "~/db.server";
 import { sendOrderConfirmationEmail } from "~/lib/email.server";
+import { generateDeliveryCode } from "~/lib/order-status";
 import { resolveReviewTargetsFromOrder } from "~/lib/review-targets.server";
 import { groupOrderLines } from "~/lib/order-line-groups";
 import { formatCurrency } from "~/lib/utils";
@@ -72,6 +73,9 @@ export async function recordPaidOrder(db: Db, input: RecordPaidOrderInput) {
   try {
     // Neon HTTP rejects nested writes / $transaction. Create order, then lines,
     // then inventory updates as separate single-statement queries.
+    const deliveryCode = generateDeliveryCode();
+    const deliveryCodeIssuedAt = new Date();
+
     const order = await runWithDbTransaction(db, async (tx) => {
       const created = await tx.order.create({
         data: {
@@ -85,7 +89,9 @@ export async function recordPaidOrder(db: Db, input: RecordPaidOrderInput) {
           currency: input.currency ?? "CAD",
           stripeSessionId,
           stripePaymentIntentId: blankToNull(input.stripePaymentIntentId),
-          status: "paid",
+          status: "received",
+          deliveryCode,
+          deliveryCodeIssuedAt,
           shippingAddress: input.shippingAddress,
           billingAddress: input.billingAddress ?? undefined,
           deliveryLocationId,
@@ -208,11 +214,12 @@ export async function deliverOrderConfirmation(db: Db, orderId: string) {
       total: formatCurrency(Number(order.total)),
       tax: formatCurrency(Number(order.tax)),
       taxAmount: Number(order.tax),
+      deliveryCode: order.deliveryCode,
       siteName: order.deliveryLocation?.name ?? null,
       timeWindow: timeWindowLabel(order.deliveryTimeSlot),
       handover: isDrop
-        ? "We bring the order to the site in your chosen window. Someone on the unit receives it."
-        : null,
+        ? "We bring the order to the site in your chosen window. Someone on the unit receives it. Show your delivery code to confirm handover."
+        : "Show your delivery code when you receive your order so we can mark it fulfilled.",
       reviewTargets,
       items: groupOrderLines(
         order.items.map((item) => ({
