@@ -5,6 +5,7 @@ import { Button } from "~/components/ui/Button";
 import { DatabaseUnavailable } from "~/components/admin/DatabaseUnavailable";
 import { db, isDatabaseAvailable } from "~/db.server";
 import { groupOrderLines } from "~/lib/order-line-groups";
+import { applyOrderRefundSideEffects } from "~/lib/paid-order.server";
 import { getStripe } from "~/lib/stripe.server";
 import { formatCurrency } from "~/lib/utils";
 import { requireAdmin } from "~/lib/session.server";
@@ -86,6 +87,12 @@ export async function action({ request, params }: Route.ActionArgs) {
       return { error: "No Stripe payment intent found for this order." };
     }
 
+    if (order.stripePaymentIntentId.startsWith("pi_mock_")) {
+      return {
+        error: "This order used a mock payment and cannot be refunded via Stripe.",
+      };
+    }
+
     if (order.status === "refunded") {
       return { error: "Order is already refunded." };
     }
@@ -96,6 +103,9 @@ export async function action({ request, params }: Route.ActionArgs) {
         payment_intent: order.stripePaymentIntentId,
       });
 
+      // Restore inventory / disable gift cards before marking refunded so the
+      // charge.refunded webhook (which skips already-refunded orders) is safe.
+      await applyOrderRefundSideEffects(db, order.id);
       await db.order.update({
         where: { id: params.id },
         data: { status: "refunded" },
