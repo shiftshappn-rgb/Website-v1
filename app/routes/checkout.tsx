@@ -16,10 +16,11 @@ import { useCheckout } from "~/lib/checkout-context";
 import { useCart } from "~/lib/cart";
 import { formatCurrency, cn } from "~/lib/utils";
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useLoaderData } from "react-router";
+import { Link, useNavigate, useLoaderData, useRouteLoaderData } from "react-router";
 import { Button } from "~/components/ui/shadcn-button";
 import { Input as ShadInput } from "~/components/ui/shadcn-input";
 import { Badge } from "~/components/ui/shadcn-badge";
+import { computeTaxAmount, DEFAULT_TAX_RATE_PERCENT, taxLabel } from "~/lib/tax";
 
 export function meta({}: Route.MetaArgs) {
   return buildMeta({
@@ -281,6 +282,7 @@ function OrderSummary({
   giftCardAmount,
   shipping,
   tax,
+  taxRatePercent,
   total,
   discountCode,
   giftCardCode,
@@ -301,6 +303,7 @@ function OrderSummary({
   giftCardAmount: number;
   shipping: number;
   tax: number;
+  taxRatePercent: number;
   total: number;
   discountCode: string;
   giftCardCode: string;
@@ -347,10 +350,17 @@ function OrderSummary({
           <span>Shipping</span>
           <span>{shipping === 0 ? <span className="text-emerald-600 font-medium">Free</span> : formatCurrency(shipping)}</span>
         </div>
-        <div className="flex justify-between text-[#666]">
-          <span>Est. Tax (13%)</span>
-          <span>{formatCurrency(tax)}</span>
-        </div>
+        {taxRatePercent > 0 ? (
+          <div className="flex justify-between text-[#666]">
+            <span>Est. {taxLabel(taxRatePercent)}</span>
+            <span>{formatCurrency(tax)}</span>
+          </div>
+        ) : (
+          <div className="flex justify-between text-[#666]">
+            <span>Inclusive of tax</span>
+            <span>—</span>
+          </div>
+        )}
         <div className="flex justify-between font-bold text-[#1b2a4a] text-base border-t border-[#e5e0d8] pt-3 mt-1">
           <span>Estimated Total</span>
           <span>{formatCurrency(total)}</span>
@@ -363,6 +373,10 @@ function OrderSummary({
 // ── Main Checkout Form ─────────────────────────────────────────────────────────
 function CheckoutForm() {
   const { customer: loggedInCustomer, googleAuthEnabled } = useLoaderData<typeof loader>();
+  const checkoutLayout = useRouteLoaderData("routes/checkout-layout") as
+    | { taxRatePercent?: number }
+    | undefined;
+  const taxRatePercent = checkoutLayout?.taxRatePercent ?? DEFAULT_TAX_RATE_PERCENT;
   const { items: cartItems } = useCart();
   const { updatePhase1, setCartItems, nextPhase } = useCheckout();
   const navigate = useNavigate();
@@ -405,7 +419,7 @@ function CheckoutForm() {
   const subtotal = typedCartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const shipping = 0;
   const merchandise = Math.max(0, subtotal - discountAmount);
-  const tax = Math.round((merchandise + shipping - giftCardAmount) * 0.13 * 100) / 100;
+  const tax = computeTaxAmount(merchandise + shipping - giftCardAmount, taxRatePercent);
   const total = Math.max(0, merchandise + shipping - giftCardAmount + tax);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -746,6 +760,7 @@ function CheckoutForm() {
             giftCardAmount={giftCardAmount}
             shipping={shipping}
             tax={tax}
+            taxRatePercent={taxRatePercent}
             total={total}
             discountCode={discountCode}
             giftCardCode={giftCardCode}

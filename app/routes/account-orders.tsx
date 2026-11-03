@@ -306,7 +306,12 @@ export default function AccountOrders({ loaderData }: Route.ComponentProps) {
                                 <dt>Tax</dt>
                                 <dd className="tabular-nums">{formatCurrency(order.tax)}</dd>
                               </div>
-                            ) : null}
+                            ) : (
+                              <div className="flex justify-between gap-3 text-charcoal/55">
+                                <dt>Inclusive of tax</dt>
+                                <dd className="tabular-nums">—</dd>
+                              </div>
+                            )}
                             <div className="flex justify-between gap-3 pt-1 font-medium text-navy">
                               <dt>Total</dt>
                               <dd className="tabular-nums">{formatCurrency(order.total)}</dd>

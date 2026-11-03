@@ -167,10 +167,17 @@ export default function AdminOrdersDetail({ loaderData, actionData }: Route.Comp
               <dt className="text-charcoal/60">Shipping</dt>
               <dd>{formatCurrency(order.shipping)}</dd>
             </div>
-            <div className="flex justify-between">
-              <dt className="text-charcoal/60">Tax</dt>
-              <dd>{formatCurrency(order.tax)}</dd>
-            </div>
+            {order.tax > 0 ? (
+              <div className="flex justify-between">
+                <dt className="text-charcoal/60">Tax</dt>
+                <dd>{formatCurrency(order.tax)}</dd>
+              </div>
+            ) : (
+              <div className="flex justify-between">
+                <dt className="text-charcoal/60">Inclusive of tax</dt>
+                <dd>—</dd>
+              </div>
+            )}
             <div className="flex justify-between border-t border-charcoal/10 pt-2 font-medium">
               <dt>Total</dt>
               <dd>{formatCurrency(order.total)}</dd>

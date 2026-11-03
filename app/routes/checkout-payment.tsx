@@ -1,7 +1,7 @@
 import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { data, redirect, Link, useLoaderData } from "react-router";
+import { data, redirect, Link, useLoaderData, useRouteLoaderData } from "react-router";
 import type { Route } from "./+types/checkout-payment";
 import {
   StripePaymentSection,
@@ -24,6 +24,12 @@ import {
   getStripePublishableKey,
   retrieveSucceededPaymentIntent,
 } from "~/lib/stripe.server";
+import {
+  computeTaxAmount,
+  DEFAULT_TAX_RATE_PERCENT,
+  taxLabel,
+} from "~/lib/tax";
+import { loadTaxRatePercent } from "~/lib/tax.server";
 import { cn, formatCurrency } from "~/lib/utils";
 
 type Phase1 = {
@@ -54,15 +60,24 @@ type Phase2 = {
   };
 };
 
-function computeTotals(phase1: Phase1, phase2: Phase2) {
+function computeTotals(phase1: Phase1, phase2: Phase2, taxRatePercent: number) {
   const subtotal = Number(phase1.subtotal ?? 0);
   const discountAmount = Number(phase1.discountAmount ?? 0);
   const giftCardAmount = Number(phase1.giftCardAmount ?? 0);
   const shippingCost = Number(phase2.shippingCost ?? 0);
   const merchandise = Math.max(0, subtotal - discountAmount - giftCardAmount);
-  const tax = Math.round((merchandise + shippingCost) * 0.13 * 100) / 100;
+  const tax = computeTaxAmount(merchandise + shippingCost, taxRatePercent);
   const total = Math.max(0, merchandise + shippingCost + tax);
-  return { subtotal, discountAmount, giftCardAmount, shippingCost, merchandise, tax, total };
+  return {
+    subtotal,
+    discountAmount,
+    giftCardAmount,
+    shippingCost,
+    merchandise,
+    tax,
+    total,
+    taxRatePercent,
+  };
 }
 
 function buildAddresses(phase1: Phase1, phase2: Phase2) {
@@ -96,9 +111,11 @@ function buildAddresses(phase1: Phase1, phase2: Phase2) {
 
 export async function loader(_args: Route.LoaderArgs) {
   const publishableKey = getStripePublishableKey();
+  const taxRatePercent = await loadTaxRatePercent(tryDb());
   return {
     publishableKey,
     stripeConfigured: Boolean(publishableKey && process.env.STRIPE_SECRET_KEY),
+    taxRatePercent,
   };
 }
 
@@ -130,7 +147,8 @@ export async function action({ request }: Route.ActionArgs) {
     return data({ error: "Your cart is empty." }, { status: 400 });
   }
 
-  const totals = computeTotals(phase1, phase2);
+  const taxRatePercent = await loadTaxRatePercent(db);
+  const totals = computeTotals(phase1, phase2, taxRatePercent);
 
   if (intent === "create-payment-intent") {
     if (totals.total <= 0) {
@@ -363,7 +381,13 @@ function getStripePromise(publishableKey: string) {
 }
 
 export default function CheckoutPhase3() {
-  const { publishableKey, stripeConfigured } = useLoaderData<typeof loader>();
+  const { publishableKey, stripeConfigured, taxRatePercent: loaderTaxRate } =
+    useLoaderData<typeof loader>();
+  const checkoutLayout = useRouteLoaderData("routes/checkout-layout") as
+    | { taxRatePercent?: number }
+    | undefined;
+  const taxRatePercent =
+    loaderTaxRate ?? checkoutLayout?.taxRatePercent ?? DEFAULT_TAX_RATE_PERCENT;
   const { formData, hydrated, clear } = useCheckout();
   const { phase1, phase2 } = formData ?? {};
   const lineItems = (formData?.cartItems ?? []) as CartItem[];
@@ -388,10 +412,11 @@ export default function CheckoutPhase3() {
         shippingCost: 0,
         tax: 0,
         total: 0,
+        taxRatePercent,
       };
     }
-    return computeTotals(phase1, phase2);
-  }, [phase1, phase2]);
+    return computeTotals(phase1, phase2, taxRatePercent);
+  }, [phase1, phase2, taxRatePercent]);
 
   const needsCard = totals.total > 0;
 
@@ -832,7 +857,14 @@ export default function CheckoutPhase3() {
               value={totals.shippingCost === 0 ? "Free" : formatCurrency(totals.shippingCost)}
               green={totals.shippingCost === 0}
             />
-            <TotalsRow label="Tax (13%)" value={formatCurrency(totals.tax)} />
+            {totals.taxRatePercent > 0 ? (
+              <TotalsRow
+                label={taxLabel(totals.taxRatePercent)}
+                value={formatCurrency(totals.tax)}
+              />
+            ) : (
+              <TotalsRow label="Inclusive of tax" value="—" />
+            )}
             <div className="border-t border-[#e5e0d8] pt-3">
               <TotalsRow label="Total" value={formatCurrency(totals.total)} bold />
             </div>

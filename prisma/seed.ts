@@ -751,6 +751,12 @@ async function main() {
     },
   });
 
+  await db.siteSetting.upsert({
+    where: { key: "taxRate" },
+    update: {},
+    create: { key: "taxRate", value: { percent: 13 } },
+  });
+
   const hospitals = [
     {
       name: "Halifax Infirmary - Abbie J Lane Building",

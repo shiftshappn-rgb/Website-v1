@@ -207,6 +207,7 @@ export async function deliverOrderConfirmation(db: Db, orderId: string) {
       orderNumber: order.orderNumber,
       total: formatCurrency(Number(order.total)),
       tax: formatCurrency(Number(order.tax)),
+      taxAmount: Number(order.tax),
       siteName: order.deliveryLocation?.name ?? null,
       timeWindow: timeWindowLabel(order.deliveryTimeSlot),
       handover: isDrop
