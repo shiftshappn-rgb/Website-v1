@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ExternalLink } from "lucide-react";
-import { Form, Link, useNavigation } from "react-router";
+import { data, Form, Link, useNavigation } from "react-router";
 import type { Route } from "./+types/admin-products-edit";
 import { Button } from "~/components/ui/Button";
 import { Input, Select, Textarea } from "~/components/ui/Input";
@@ -127,67 +127,69 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 
   await requireAdmin(request);
 
-  const [product, categories, fabricTypes, catalogColors] = await Promise.all([
-    db.product.findUnique({
-      where: { id: params.id },
-      include: { variants: { orderBy: { createdAt: "asc" } } },
-    }),
-    db.category.findMany({ orderBy: { name: "asc" } }),
-    db.fabricType.findMany({ orderBy: { name: "asc" } }),
-    listCatalogColors(),
-  ]);
+  try {
+    const [product, categories, fabricTypes, catalogColors] = await Promise.all([
+      db.product.findUnique({
+        where: { id: params.id },
+        include: { variants: { orderBy: { createdAt: "asc" } } },
+      }),
+      db.category.findMany({
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, slug: true, parentCategoryId: true },
+      }),
+      db.fabricType.findMany({
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, slug: true },
+      }),
+      listCatalogColors(),
+    ]);
 
-  if (!product) {
-    throw new Response("Product not found", { status: 404 });
+    if (!product) {
+      throw data("Product not found", { status: 404 });
+    }
+
+    return {
+      dbAvailable: true as const,
+      cloudName: process.env.CLOUDINARY_CLOUD_NAME ?? null,
+      product: {
+        id: product.id,
+        name: product.name,
+        slug: product.slug,
+        description: product.description,
+        shortDescription: product.shortDescription,
+        status: product.status,
+        basePrice: Number(product.basePrice),
+        compareAtPrice: product.compareAtPrice ? Number(product.compareAtPrice) : null,
+        categoryId: product.categoryId,
+        fabricTypeId: product.fabricTypeId,
+        seoTitle: product.seoTitle,
+        seoDescription: product.seoDescription,
+        seoImage: product.seoImage,
+        fitSummary: product.fitSummary,
+        careInstructions: product.careInstructions,
+        lengthGuide: product.lengthGuide,
+        offerLengths: product.offerLengths,
+        updatedAt: product.updatedAt.toISOString(),
+        variants: product.variants.map((variant) => ({
+          id: variant.id,
+          colorName: variant.colorName,
+          colorHex: variant.colorHex,
+          size: variant.size,
+          sku: variant.sku,
+          priceOverride: variant.priceOverride ? Number(variant.priceOverride) : null,
+          inventoryQty: variant.inventoryQty,
+          images: parseVariantImages(variant.images),
+        })),
+      },
+      categories,
+      fabricTypes,
+      catalogColors,
+    };
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    console.error("admin-products-edit loader failed:", error);
+    throw data("Could not load this product. Try refreshing.", { status: 500 });
   }
-
-  return {
-    dbAvailable: true as const,
-    cloudName: process.env.CLOUDINARY_CLOUD_NAME ?? null,
-    product: {
-      id: product.id,
-      name: product.name,
-      slug: product.slug,
-      description: product.description,
-      shortDescription: product.shortDescription,
-      status: product.status,
-      basePrice: Number(product.basePrice),
-      compareAtPrice: product.compareAtPrice ? Number(product.compareAtPrice) : null,
-      categoryId: product.categoryId,
-      fabricTypeId: product.fabricTypeId,
-      seoTitle: product.seoTitle,
-      seoDescription: product.seoDescription,
-      seoImage: product.seoImage,
-      fitSummary: product.fitSummary,
-      careInstructions: product.careInstructions,
-      lengthGuide: product.lengthGuide,
-      offerLengths: product.offerLengths,
-      updatedAt: product.updatedAt.toISOString(),
-      variants: product.variants.map((variant) => ({
-        id: variant.id,
-        colorName: variant.colorName,
-        colorHex: variant.colorHex,
-        size: variant.size,
-        sku: variant.sku,
-        priceOverride: variant.priceOverride ? Number(variant.priceOverride) : null,
-        inventoryQty: variant.inventoryQty,
-        images: parseVariantImages(variant.images),
-      })),
-    },
-    // Plain JSON only — avoid Date/Decimal hydration surprises in admin forms.
-    categories: categories.map((category) => ({
-      id: category.id,
-      name: category.name,
-      slug: category.slug,
-      parentCategoryId: category.parentCategoryId,
-    })),
-    fabricTypes: fabricTypes.map((fabric) => ({
-      id: fabric.id,
-      name: fabric.name,
-      slug: fabric.slug,
-    })),
-    catalogColors,
-  };
 }
 
 export async function action({ request, params }: Route.ActionArgs): Promise<ActionResult> {
@@ -197,9 +199,25 @@ export async function action({ request, params }: Route.ActionArgs): Promise<Act
 
   await requireAdmin(request);
 
+  try {
+    return await runProductEditAction(request, params.id!);
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    console.error("admin-products-edit action failed:", error);
+    const message =
+      error instanceof Error && error.message
+        ? error.message
+        : "Something went wrong saving. Please try again.";
+    return { error: message };
+  }
+}
+
+async function runProductEditAction(
+  request: Request,
+  productId: string
+): Promise<ActionResult> {
   const formData = await request.formData();
   const intent = String(formData.get("intent") ?? "update-product");
-  const productId = params.id!;
 
   if (intent === "delete-variant" || intent === "bulk-delete-variants") {
     const variantIds = [
@@ -322,7 +340,7 @@ export async function action({ request, params }: Route.ActionArgs): Promise<Act
 
     const updated = await db.productVariant.updateMany({
       where: { productId, colorName },
-      data: { images: parsed.images },
+      data: { images: parsed.images as Prisma.InputJsonValue },
     });
     if (updated.count === 0) {
       return { error: "No variants found for that colour." };
@@ -656,27 +674,34 @@ export async function action({ request, params }: Route.ActionArgs): Promise<Act
     return { error: "A product with this slug already exists." };
   }
 
-  await db.product.update({
-    where: { id: productId },
-    data: {
-      name,
-      slug,
-      description,
-      shortDescription,
-      status,
-      basePrice,
-      compareAtPrice,
-      categoryId,
-      fabricTypeId,
-      seoTitle,
-      seoDescription,
-      seoImage,
-      fitSummary,
-      careInstructions,
-      lengthGuide,
-      offerLengths,
-    },
-  });
+  try {
+    await db.product.update({
+      where: { id: productId },
+      data: {
+        name,
+        slug,
+        description,
+        shortDescription,
+        status,
+        basePrice,
+        compareAtPrice,
+        categoryId,
+        fabricTypeId,
+        seoTitle,
+        seoDescription,
+        seoImage,
+        fitSummary,
+        careInstructions,
+        lengthGuide,
+        offerLengths,
+      },
+    });
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return { error: "A product with this slug already exists." };
+    }
+    throw error;
+  }
 
   return { success: "Product saved." };
 }
