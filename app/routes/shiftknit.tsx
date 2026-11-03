@@ -141,7 +141,7 @@ function ProductRow({
               key={product.id}
               className="w-[70%] shrink-0 sm:w-auto sm:shrink"
             >
-              <ProductCard product={product} cloudName={cloudName} />
+              <ProductCard product={product} cloudName={cloudName} padded />
             </div>
           ))}
         </div>

@@ -6,6 +6,8 @@ import type { ProductCardData } from "~/lib/serialize";
 type ProductCardProps = {
   product: ProductCardData;
   cloudName?: string;
+  /** Soft gutters above/below the product photo (matches best-seller cards). */
+  padded?: boolean;
 };
 
 function ColorSwatches({
@@ -37,7 +39,7 @@ function ColorSwatches({
   );
 }
 
-export function ProductCard({ product, cloudName }: ProductCardProps) {
+export function ProductCard({ product, cloudName, padded = false }: ProductCardProps) {
   const price = Number(product.basePrice);
   const compareAt = product.compareAtPrice != null ? Number(product.compareAtPrice) : null;
   const colors = product.colors ?? [];
@@ -56,6 +58,7 @@ export function ProductCard({ product, cloudName }: ProductCardProps) {
         alt={product.imageAlt ?? product.name}
         href={href}
         cloudName={cloudName}
+        padded={padded}
         imageClassName="transition-opacity group-hover:opacity-90 bg-card-soft"
       />
       <Link to={href} prefetch="intent" className="block">
