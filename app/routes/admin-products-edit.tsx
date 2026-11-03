@@ -174,8 +174,18 @@ export async function loader({ request, params }: Route.LoaderArgs) {
         images: parseVariantImages(variant.images),
       })),
     },
-    categories,
-    fabricTypes,
+    // Plain JSON only — avoid Date/Decimal hydration surprises in admin forms.
+    categories: categories.map((category) => ({
+      id: category.id,
+      name: category.name,
+      slug: category.slug,
+      parentCategoryId: category.parentCategoryId,
+    })),
+    fabricTypes: fabricTypes.map((fabric) => ({
+      id: fabric.id,
+      name: fabric.name,
+      slug: fabric.slug,
+    })),
     catalogColors,
   };
 }
@@ -711,7 +721,12 @@ export default function AdminProductsEdit({ loaderData, actionData }: Route.Comp
           <div className="space-y-1">
             <h1 className="font-serif text-2xl text-navy">{product.name}</h1>
             <p className="text-sm text-charcoal/60">
-              Last updated {new Date(product.updatedAt).toLocaleString()}
+              Last updated{" "}
+              {new Date(product.updatedAt).toLocaleString("en-CA", {
+                dateStyle: "medium",
+                timeStyle: "short",
+                timeZone: "America/Halifax",
+              })}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">

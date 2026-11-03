@@ -125,7 +125,12 @@ export default function AdminOrdersDetail({ loaderData, actionData }: Route.Comp
         <div>
           <h1 className="text-2xl font-serif text-navy">{order.orderNumber}</h1>
           <p className="text-sm text-charcoal/60">
-            {new Date(order.createdAt).toLocaleString()} · {order.email}
+            {new Date(order.createdAt).toLocaleString("en-CA", {
+              dateStyle: "medium",
+              timeStyle: "short",
+              timeZone: "America/Halifax",
+            })}{" "}
+            · {order.email}
           </p>
         </div>
         <Badge
