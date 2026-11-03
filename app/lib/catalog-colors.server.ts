@@ -17,64 +17,93 @@ function normalizeHex(hex: string) {
   return null;
 }
 
+function staticCatalogColors(): CatalogColorOption[] {
+  return Object.entries(CATALOG_COLORS).map(([name, hex], index) => ({
+    id: `static-${slugify(name)}`,
+    name,
+    slug: slugify(name),
+    hex,
+    sortOrder: index,
+  }));
+}
+
 export async function listCatalogColors(): Promise<CatalogColorOption[]> {
   const db = tryDb();
-  if (!db?.catalogColor) return [];
-  await ensureCatalogColors();
-  return db.catalogColor.findMany({
-    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-  });
+  if (!db?.catalogColor) return staticCatalogColors();
+
+  try {
+    await ensureCatalogColors();
+    const rows = await db.catalogColor.findMany({
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        hex: true,
+        sortOrder: true,
+      },
+    });
+    return rows.length > 0 ? rows : staticCatalogColors();
+  } catch (error) {
+    console.error("listCatalogColors failed:", error);
+    return staticCatalogColors();
+  }
 }
 
 export async function ensureCatalogColors() {
   const db = tryDb();
   if (!db?.catalogColor) return;
 
-  const existing = await db.catalogColor.findMany({
-    select: { name: true, slug: true },
-  });
-  const byName = new Set(existing.map((color) => color.name.toLowerCase()));
-  const bySlug = new Set(existing.map((color) => color.slug));
-
-  const toCreate: Array<{ name: string; hex: string; slug: string; sortOrder: number }> =
-    Object.entries(CATALOG_COLORS).map(([name, hex], index) => ({
-      name,
-      hex,
-      slug: slugify(name),
-      sortOrder: index,
-    }));
-
-  const variantColors = await db.productVariant.findMany({
-    distinct: ["colorName"],
-    select: { colorName: true, colorHex: true },
-  });
-
-  for (const variant of variantColors) {
-    const hex = normalizeHex(variant.colorHex);
-    if (!hex) continue;
-    const name = variant.colorName.trim();
-    if (!name) continue;
-    if (byName.has(name.toLowerCase())) continue;
-    const slug = slugify(name);
-    if (bySlug.has(slug) || toCreate.some((color) => color.slug === slug)) continue;
-    toCreate.push({
-      name,
-      hex,
-      slug,
-      sortOrder: toCreate.length,
+  try {
+    const existing = await db.catalogColor.findMany({
+      select: { name: true, slug: true },
     });
+    const byName = new Set(existing.map((color) => color.name.toLowerCase()));
+    const bySlug = new Set(existing.map((color) => color.slug));
+
+    const toCreate: Array<{ name: string; hex: string; slug: string; sortOrder: number }> =
+      Object.entries(CATALOG_COLORS).map(([name, hex], index) => ({
+        name,
+        hex,
+        slug: slugify(name),
+        sortOrder: index,
+      }));
+
+    const variantColors = await db.productVariant.findMany({
+      distinct: ["colorName"],
+      select: { colorName: true, colorHex: true },
+    });
+
+    for (const variant of variantColors) {
+      const hex = normalizeHex(variant.colorHex);
+      if (!hex) continue;
+      const name = variant.colorName.trim();
+      if (!name) continue;
+      if (byName.has(name.toLowerCase())) continue;
+      const slug = slugify(name);
+      if (bySlug.has(slug) || toCreate.some((color) => color.slug === slug)) continue;
+      toCreate.push({
+        name,
+        hex,
+        slug,
+        sortOrder: toCreate.length,
+      });
+    }
+
+    const missing = toCreate.filter(
+      (color) => !byName.has(color.name.toLowerCase()) && !bySlug.has(color.slug)
+    );
+
+    if (missing.length === 0) return;
+
+    await db.catalogColor.createMany({
+      data: missing,
+      skipDuplicates: true,
+    });
+  } catch (error) {
+    // Never block product admin pages on color sync failures.
+    console.error("ensureCatalogColors failed:", error);
   }
-
-  const missing = toCreate.filter(
-    (color) => !byName.has(color.name.toLowerCase()) && !bySlug.has(color.slug)
-  );
-
-  if (missing.length === 0) return;
-
-  await db.catalogColor.createMany({
-    data: missing,
-    skipDuplicates: true,
-  });
 }
 
 export function parseColorHex(value: string) {
