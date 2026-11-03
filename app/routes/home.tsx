@@ -101,6 +101,7 @@ export async function loader() {
       productsByBlockId,
       packsByBlockId: {},
       cloudName,
+      appUrl: process.env.APP_URL ?? "http://localhost:5173",
     };
   }
 
@@ -111,6 +112,7 @@ export async function loader() {
       productsByBlockId: {},
       packsByBlockId: {},
       cloudName,
+      appUrl: process.env.APP_URL ?? "http://localhost:5173",
     };
   }
 
@@ -137,15 +139,17 @@ export async function loader() {
     productsByBlockId,
     packsByBlockId,
     cloudName,
+    appUrl: process.env.APP_URL ?? "http://localhost:5173",
   };
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { blocks, productsByBlockId, packsByBlockId, cloudName } = loaderData;
+  const { blocks, productsByBlockId, packsByBlockId, cloudName, appUrl } =
+    loaderData;
 
   return (
     <>
-      <JsonLd data={organizationJsonLd()} />
+      <JsonLd data={organizationJsonLd(appUrl)} />
       <BlockRenderer
         blocks={blocks}
         cloudName={cloudName}

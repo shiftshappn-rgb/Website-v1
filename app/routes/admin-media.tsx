@@ -120,7 +120,7 @@ export default function AdminMedia({ loaderData, actionData }: Route.ComponentPr
                 <p className="text-xs text-charcoal/50">{asset.tags.join(", ")}</p>
               )}
               <p className="text-xs text-charcoal/40">
-                {new Date(asset.uploadedAt).toLocaleDateString()}
+                {new Date(asset.uploadedAt).toLocaleDateString("en-CA", { timeZone: "America/Halifax" })}
               </p>
               <Form method="post">
                 <input type="hidden" name="intent" value="delete" />

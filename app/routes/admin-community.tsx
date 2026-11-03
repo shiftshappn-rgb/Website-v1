@@ -123,7 +123,7 @@ export default function AdminCommunity({ loaderData, actionData }: Route.Compone
                     {post.authorName}
                     {post.role ? `, ${post.role}` : ""}
                     {post.workplace ? `, ${post.workplace}` : ""} ·{" "}
-                    {new Date(post.createdAt).toLocaleDateString()}
+                    {new Date(post.createdAt).toLocaleDateString("en-CA", { timeZone: "America/Halifax" })}
                   </p>
                 </div>
                 <Badge variant={statusVariant[post.status]}>{post.status}</Badge>

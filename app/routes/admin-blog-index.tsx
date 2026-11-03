@@ -103,7 +103,7 @@ export default function AdminBlogIndex({ loaderData }: Route.ComponentProps) {
         accessorKey: "publishedAt",
         cell: ({ row }) =>
           row.original.publishedAt
-            ? new Date(row.original.publishedAt).toLocaleDateString()
+            ? new Date(row.original.publishedAt).toLocaleDateString("en-CA", { timeZone: "America/Halifax" })
             : "—",
         size: 120,
       },
