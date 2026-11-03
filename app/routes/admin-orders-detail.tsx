@@ -103,13 +103,8 @@ export async function action({ request, params }: Route.ActionArgs) {
         payment_intent: order.stripePaymentIntentId,
       });
 
-      // Restore inventory / disable gift cards before marking refunded so the
-      // charge.refunded webhook (which skips already-refunded orders) is safe.
+      // Idempotent with charge.refunded webhook (claims refunded status once).
       await applyOrderRefundSideEffects(db, order.id);
-      await db.order.update({
-        where: { id: params.id },
-        data: { status: "refunded" },
-      });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Refund failed.";
       return { error: message };

@@ -141,16 +141,25 @@ function timeWindowLabel(slot: { label: string; startTime: string; endTime: stri
   return `${slot.label} (${slot.startTime}–${slot.endTime})`;
 }
 
-/** Inventory restore + disable purchased gift cards after a refund. */
+/**
+ * Mark order refunded (once) and restore inventory / disable gift cards.
+ * Safe if admin refund and `charge.refunded` webhook race.
+ */
 export async function applyOrderRefundSideEffects(
   db: Db,
   orderId: string
-): Promise<void> {
+): Promise<boolean> {
+  const claimed = await db.order.updateMany({
+    where: { id: orderId, status: { not: "refunded" } },
+    data: { status: "refunded" },
+  });
+  if (claimed.count === 0) return false;
+
   const order = await db.order.findUnique({
     where: { id: orderId },
     include: { items: true },
   });
-  if (!order) return;
+  if (!order) return true;
 
   for (const item of order.items) {
     if (item.lineType === "product" && item.productVariantId) {
@@ -171,6 +180,8 @@ export async function applyOrderRefundSideEffects(
       data: { status: "disabled", balance: 0 },
     });
   }
+
+  return true;
 }
 
 export async function deliverOrderConfirmation(db: Db, orderId: string) {

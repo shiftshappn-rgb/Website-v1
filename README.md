@@ -50,9 +50,9 @@ See `.env.example` for all required variables.
 |----------|-------------|
 | `DATABASE_URL` | Neon pooled connection string |
 | `DATABASE_URL_UNPOOLED` | Neon direct connection (for migrations) |
-| `STRIPE_SECRET_KEY` | Stripe secret key |
-| `STRIPE_PUBLISHABLE_KEY` | Stripe publishable key |
-| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret |
+| `STRIPE_SECRET_KEY` | Stripe secret key (`sk_test_…` / `sk_live_…`) |
+| `STRIPE_PUBLISHABLE_KEY` | Stripe publishable key (`pk_test_…` / `pk_live_…`) |
+| `STRIPE_WEBHOOK_SECRET` | Webhook signing secret (`whsec_…`) |
 | `CLOUDINARY_CLOUD_NAME` | Cloudinary cloud name |
 | `CLOUDINARY_API_KEY` | Cloudinary API key |
 | `CLOUDINARY_API_SECRET` | Cloudinary API secret |
@@ -78,7 +78,7 @@ prisma/
 - Block-driven homepage (editable via admin)
 - Product listing pages (Women, Men, Colour, Fabric)
 - Product detail with variant selectors and cart
-- Cart drawer with Stripe Checkout
+- Cart drawer with multi-phase checkout + Stripe Payment Element
 - Blog / Journal
 - Customer accounts with order history
 - SEO: sitemap.xml, robots.txt, JSON-LD structured data
@@ -91,13 +91,33 @@ prisma/
 - Blog CMS, Discount codes, Media library
 - Review moderation
 
-## Stripe Webhook (Local Dev)
+## Stripe setup
+
+Checkout charges on `/checkout/payment` via **Payment Element** (PaymentIntents, CAD).
+
+### Local
+
+1. Put **test** keys in `.env`: `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `APP_URL=http://localhost:5173`.
+2. Forward webhooks:
 
 ```bash
 stripe listen --forward-to localhost:5173/api/webhook
 ```
 
-Copy the webhook signing secret to `STRIPE_WEBHOOK_SECRET` in `.env`.
+3. Copy the CLI signing secret into `STRIPE_WEBHOOK_SECRET`.
+4. Subscribe the listener to at least: `payment_intent.succeeded`, `charge.refunded` (legacy `checkout.session.completed` is still accepted).
+
+### Vercel (live)
+
+1. Project → Settings → Environment Variables (Production):
+   - `STRIPE_SECRET_KEY` = `sk_live_…`
+   - `STRIPE_PUBLISHABLE_KEY` = `pk_live_…`
+   - `APP_URL` = `https://website-v1-lake.vercel.app` (or your custom domain)
+2. Stripe Dashboard → Developers → Webhooks → Add endpoint:
+   - URL: `https://website-v1-lake.vercel.app/api/webhook`
+   - Events: `payment_intent.succeeded`, `charge.refunded` (optional: `checkout.session.completed`)
+3. Copy the endpoint signing secret → `STRIPE_WEBHOOK_SECRET` on Vercel.
+4. Redeploy after saving env vars.
 
 ## Scripts
 

@@ -342,8 +342,4 @@ async function handleChargeRefunded(
   if (!order || order.status === "refunded") return;
 
   await applyOrderRefundSideEffects(db, order.id);
-  await db.order.update({
-    where: { id: order.id },
-    data: { status: "refunded" },
-  });
 }
