@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { PURCHASE_ACTIVE_STATUSES } from "~/lib/order-status";
 
 /**
  * Verified purchase requires the order to be linked to this customer id.
@@ -16,7 +17,7 @@ export async function customerHasVerifiedPurchase(
     where: {
       productVariant: { productId: { in: productIds } },
       order: {
-        status: { in: ["paid", "fulfilled"] },
+        status: { in: PURCHASE_ACTIVE_STATUSES },
         customerId,
       },
     },

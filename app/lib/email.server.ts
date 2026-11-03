@@ -2,13 +2,49 @@ import { Resend } from "resend";
 
 let resend: Resend | null = null;
 
+const DEFAULT_FROM = "shiftshappn <orders@shiftshappn.com>";
+
 function getResend() {
   if (!resend) {
-    const key = process.env.RESEND_API_KEY;
+    const key = (process.env.RESEND_API_KEY ?? "").trim();
     if (!key) return null;
     resend = new Resend(key);
   }
   return resend;
+}
+
+function getFromAddress() {
+  return (process.env.EMAIL_FROM ?? DEFAULT_FROM).trim() || DEFAULT_FROM;
+}
+
+async function sendEmail(input: {
+  to: string | string[];
+  subject: string;
+  html: string;
+  bcc?: string[];
+  label: string;
+}): Promise<boolean> {
+  const client = getResend();
+  if (!client) {
+    console.log(`[email] Resend not configured, skipping ${input.label}`);
+    return false;
+  }
+
+  const { data, error } = await client.emails.send({
+    from: getFromAddress(),
+    to: input.to,
+    bcc: input.bcc,
+    subject: input.subject,
+    html: input.html,
+  });
+
+  if (error) {
+    console.error(`[email] ${input.label} failed:`, error.message ?? error);
+    return false;
+  }
+
+  console.log(`[email] ${input.label} sent`, data?.id ? `(id ${data.id})` : "");
+  return true;
 }
 
 function escapeHtml(value: string) {
@@ -25,6 +61,7 @@ export async function sendOrderConfirmationEmail({
   total,
   tax,
   taxAmount = 0,
+  deliveryCode,
   items,
   siteName,
   timeWindow,
@@ -37,18 +74,13 @@ export async function sendOrderConfirmationEmail({
   tax: string;
   /** When 0, email shows “Inclusive of tax” instead of a tax line. */
   taxAmount?: number;
+  deliveryCode?: string | null;
   items: Array<{ name: string; quantity: number; price: string }>;
   siteName?: string | null;
   timeWindow?: string | null;
   handover?: string | null;
   reviewTargets?: Array<{ label: string; href: string }>;
 }): Promise<boolean> {
-  const client = getResend();
-  if (!client) {
-    console.log("[email] Resend not configured, skipping order confirmation");
-    return false;
-  }
-
   const itemsHtml = items
     .map(
       (item) =>
@@ -67,6 +99,14 @@ export async function sendOrderConfirmationEmail({
 
   const handoverHtml = handover
     ? `<p style="color:#1C2B36">${escapeHtml(handover)}</p>`
+    : "";
+
+  const deliveryCodeHtml = deliveryCode
+    ? `<div style="margin:24px 0;padding:20px;background:#F6F1E9;border-radius:12px;text-align:center">
+        <p style="margin:0 0 8px;font-size:13px;font-weight:600;color:#1D4E78;letter-spacing:0.04em;text-transform:uppercase">Delivery code</p>
+        <p style="margin:0 0 10px;font-size:32px;font-weight:700;letter-spacing:0.2em;font-family:ui-monospace,monospace;color:#1C2B36">${escapeHtml(deliveryCode)}</p>
+        <p style="margin:0;font-size:14px;color:#1C2B36">Show this code when you receive your order. We enter it to mark the order fulfilled.</p>
+      </div>`
     : "";
 
   const appUrl = process.env.APP_URL ?? "http://localhost:5173";
@@ -96,9 +136,9 @@ export async function sendOrderConfirmationEmail({
         </div>`
       : "";
 
-  await client.emails.send({
-    from: "shiftshappn <orders@shiftshappn.com>",
+  return sendEmail({
     to,
+    label: "order confirmation",
     subject: `Order confirmed — ${orderNumber}`,
     html: `
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#1C2B36">
@@ -106,6 +146,7 @@ export async function sendOrderConfirmationEmail({
         <p>Your order is confirmed.</p>
         ${dropHtml}
         ${handoverHtml}
+        ${deliveryCodeHtml}
         <table style="width:100%;border-collapse:collapse;margin:24px 0">
           ${itemsHtml}
           ${
@@ -120,8 +161,6 @@ export async function sendOrderConfirmationEmail({
       </div>
     `,
   });
-
-  return true;
 }
 
 export async function sendGiftCardEmail({
@@ -141,12 +180,6 @@ export async function sendGiftCardEmail({
   isRecipient?: boolean;
   bcc?: string;
 }) {
-  const client = getResend();
-  if (!client) {
-    console.log("[email] Resend not configured, skipping gift card email");
-    return;
-  }
-
   const greeting = isRecipient
     ? recipientName
       ? `<p>Hi ${recipientName},</p>`
@@ -161,10 +194,10 @@ export async function sendGiftCardEmail({
     ? `<p style="margin:16px 0;padding:16px;background:#F6F1E9;border-radius:8px;color:#1C2B36"><em>${note}</em></p>`
     : "";
 
-  await client.emails.send({
-    from: "shiftshappn <orders@shiftshappn.com>",
+  await sendEmail({
     to,
     bcc: bcc ? [bcc] : undefined,
+    label: "gift card email",
     subject: isRecipient
       ? "You received a ShiftsHappn gift card"
       : "Your ShiftsHappn gift card",
@@ -190,9 +223,6 @@ export async function sendShippingUpdateEmail({
   orderNumber: string;
   reviewTargets?: Array<{ label: string; href: string }>;
 }) {
-  const client = getResend();
-  if (!client) return;
-
   const appUrl = process.env.APP_URL ?? "http://localhost:5173";
   const reviewHtml =
     reviewTargets && reviewTargets.length > 0
@@ -206,9 +236,9 @@ export async function sendShippingUpdateEmail({
            .join("")}`
       : "";
 
-  await client.emails.send({
-    from: "shiftshappn <orders@shiftshappn.com>",
+  await sendEmail({
     to,
+    label: "shipping update",
     subject: `Your order ${orderNumber} has shipped`,
     html: `
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#1C2B36">

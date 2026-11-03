@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import type { Route } from "./+types/account";
 import { requireCustomer } from "~/lib/session.server";
 import { tryDb } from "~/db.server";
+import { orderStatusLabel } from "~/lib/order-status";
 import { buildMeta } from "~/lib/seo";
 import { formatCurrency } from "~/lib/utils";
 
@@ -108,7 +109,7 @@ export default function Account({ loaderData }: Route.ComponentProps) {
                 </div>
                 <div className="text-right">
                   <p className="font-medium text-navy">{formatCurrency(order.total)}</p>
-                  <p className="text-xs text-charcoal/50 capitalize">{order.status}</p>
+                  <p className="text-xs text-charcoal/50">{orderStatusLabel(order.status)}</p>
                 </div>
               </Link>
             ))}

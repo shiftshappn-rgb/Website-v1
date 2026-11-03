@@ -2,6 +2,10 @@ import { Form, Link, data, useNavigation } from "react-router";
 import type { Route } from "./+types/account-profile";
 import { requireCustomer } from "~/lib/session.server";
 import { tryDb } from "~/db.server";
+import {
+  ORDER_STATUS_BADGE_CLASS,
+  orderStatusLabel,
+} from "~/lib/order-status";
 import { buildMeta } from "~/lib/seo";
 import { cn, formatCurrency } from "~/lib/utils";
 import { Button } from "~/components/ui/Button";
@@ -96,6 +100,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       orderNumber: order.orderNumber,
       total: Number(order.total),
       status: order.status,
+      deliveryCode: order.deliveryCode,
       createdAt: order.createdAt.toISOString(),
       itemCount: order.items.reduce((sum, item) => sum + item.quantity, 0),
     })),
@@ -124,16 +129,11 @@ export async function action({ request }: Route.ActionArgs) {
   return { success: true };
 }
 
-const ORDER_STATUS_STYLES: Record<string, string> = {
-  paid: "bg-sky/15 text-navy",
-  fulfilled: "bg-emerald-50 text-emerald-800",
-  refunded: "bg-red-50 text-red-700",
-  pending: "bg-sand text-charcoal/70",
-  cancelled: "bg-charcoal/5 text-charcoal/55",
-};
-
 function orderStatusClass(status: string) {
-  return ORDER_STATUS_STYLES[status] ?? "bg-charcoal/5 text-charcoal/60";
+  return (
+    ORDER_STATUS_BADGE_CLASS[status as keyof typeof ORDER_STATUS_BADGE_CLASS] ??
+    "bg-charcoal/5 text-charcoal/60"
+  );
 }
 
 function initials(name: string | null, email: string) {
@@ -458,8 +458,16 @@ export default function AccountProfile({ loaderData, actionData }: Route.Compone
                               orderStatusClass(order.status)
                             )}
                           >
-                            {order.status}
+                            {orderStatusLabel(order.status)}
                           </span>
+                          {order.deliveryCode &&
+                          order.status !== "fulfilled" &&
+                          order.status !== "refunded" &&
+                          order.status !== "cancelled" ? (
+                            <p className="mt-1 font-mono text-[11px] tracking-widest text-navy/70">
+                              Code {order.deliveryCode}
+                            </p>
+                          ) : null}
                         </div>
                       </Link>
                     </li>

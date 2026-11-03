@@ -16,8 +16,10 @@ enum ProductStatus {
 
 enum OrderStatus {
   pending
-  paid
+  received
+  processing
   fulfilled
+  refund_initiated
   refunded
   cancelled
 }
@@ -360,6 +362,10 @@ model Order {
   stripePaymentIntentId String?
   stripeSessionId       String?     @unique
   confirmationSentAt    DateTime?
+  deliveryCode          String?
+  deliveryCodeIssuedAt  DateTime?
+  fulfilledAt           DateTime?
+  refundInitiatedAt     DateTime?
   status                OrderStatus @default(pending)
   shippingAddress       Json
   billingAddress        Json?

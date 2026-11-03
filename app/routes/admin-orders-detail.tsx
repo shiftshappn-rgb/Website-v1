@@ -1,10 +1,16 @@
-import { Form, redirect, useActionData } from "react-router";
+import { Form, redirect } from "react-router";
 import type { Route } from "./+types/admin-orders-detail";
 import { Badge, Card } from "~/components/ui/Badge";
 import { Button } from "~/components/ui/Button";
 import { DatabaseUnavailable } from "~/components/admin/DatabaseUnavailable";
 import { db, isDatabaseAvailable } from "~/db.server";
 import { groupOrderLines } from "~/lib/order-line-groups";
+import {
+  canFulfillWithCode,
+  canInitiateRefund,
+  canStartProcessing,
+  orderStatusLabel,
+} from "~/lib/order-status";
 import { applyOrderRefundSideEffects } from "~/lib/paid-order.server";
 import { getStripe } from "~/lib/stripe.server";
 import { formatCurrency } from "~/lib/utils";
@@ -69,14 +75,35 @@ export async function action({ request, params }: Route.ActionArgs) {
     return { error: "Order not found." };
   }
 
-  if (intent === "fulfill") {
-    if (order.status !== "paid") {
-      return { error: "Only paid orders can be marked as fulfilled." };
+  if (intent === "start-processing") {
+    if (!canStartProcessing(order.status)) {
+      return { error: "Only received orders can be moved to processing." };
     }
 
     await db.order.update({
       where: { id: params.id },
-      data: { status: "fulfilled" },
+      data: { status: "processing" },
+    });
+
+    return redirect(`/admin/orders/${params.id}`);
+  }
+
+  if (intent === "fulfill") {
+    if (!canFulfillWithCode(order.status)) {
+      return { error: "Only processing orders can be fulfilled with a delivery code." };
+    }
+
+    const entered = String(formData.get("deliveryCode") ?? "").trim();
+    if (!order.deliveryCode) {
+      return { error: "This order has no delivery code. Ask the customer to contact support." };
+    }
+    if (entered !== order.deliveryCode) {
+      return { error: "Delivery code does not match. Ask the customer to show their code." };
+    }
+
+    await db.order.update({
+      where: { id: params.id },
+      data: { status: "fulfilled", fulfilledAt: new Date() },
     });
 
     return redirect(`/admin/orders/${params.id}`);
@@ -97,14 +124,32 @@ export async function action({ request, params }: Route.ActionArgs) {
       return { error: "Order is already refunded." };
     }
 
+    if (order.status === "refund_initiated") {
+      return { error: "Refund already initiated. Waiting for Stripe to confirm." };
+    }
+
+    if (!canInitiateRefund(order.status)) {
+      return { error: "This order cannot be refunded in its current status." };
+    }
+
     try {
       const stripe = getStripe();
-      await stripe.refunds.create({
+      const refund = await stripe.refunds.create({
         payment_intent: order.stripePaymentIntentId,
       });
 
-      // Idempotent with charge.refunded webhook (claims refunded status once).
-      await applyOrderRefundSideEffects(db, order.id);
+      await db.order.update({
+        where: { id: order.id },
+        data: {
+          status: "refund_initiated",
+          refundInitiatedAt: new Date(),
+        },
+      });
+
+      // Card refunds often succeed immediately; webhook also completes idempotently.
+      if (refund.status === "succeeded") {
+        await applyOrderRefundSideEffects(db, order.id);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Refund failed.";
       return { error: message };
@@ -144,10 +189,12 @@ export default function AdminOrdersDetail({ loaderData, actionData }: Route.Comp
               ? "success"
               : order.status === "refunded"
                 ? "default"
-                : "terracotta"
+                : order.status === "refund_initiated"
+                  ? "warning"
+                  : "terracotta"
           }
         >
-          {order.status}
+          {orderStatusLabel(order.status)}
         </Badge>
       </div>
 
@@ -297,22 +344,61 @@ export default function AdminOrdersDetail({ loaderData, actionData }: Route.Comp
         </Card>
       )}
 
-      <div className="flex flex-wrap gap-3">
-        {order.status === "paid" && (
+      <div className="flex flex-wrap items-end gap-3">
+        {canStartProcessing(order.status) && (
           <Form method="post">
-            <input type="hidden" name="intent" value="fulfill" />
-            <Button type="submit">Mark Fulfilled</Button>
+            <input type="hidden" name="intent" value="start-processing" />
+            <Button type="submit">Start processing</Button>
           </Form>
         )}
-        {order.stripePaymentIntentId && order.status !== "refunded" && (
+
+        {canFulfillWithCode(order.status) && (
+          <Form method="post" className="flex flex-wrap items-end gap-2">
+            <input type="hidden" name="intent" value="fulfill" />
+            <label className="block text-sm">
+              <span className="mb-1 block text-charcoal/60">
+                Customer delivery code
+              </span>
+              <input
+                name="deliveryCode"
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="6-digit code"
+                className="h-10 w-40 rounded-md border border-charcoal/20 bg-white px-3 font-mono tracking-widest"
+                required
+              />
+            </label>
+            <Button type="submit">Mark fulfilled</Button>
+          </Form>
+        )}
+
+        {order.stripePaymentIntentId && canInitiateRefund(order.status) && (
           <Form method="post">
             <input type="hidden" name="intent" value="refund" />
             <Button type="submit" variant="outline" className="text-red-600">
-              Issue Refund
+              Issue refund
             </Button>
           </Form>
         )}
+
+        {order.status === "refund_initiated" && (
+          <p className="text-sm text-charcoal/60">
+            Refund initiated{order.refundInitiatedAt
+              ? ` on ${new Date(order.refundInitiatedAt).toLocaleString("en-CA", {
+                  timeZone: "America/Halifax",
+                })}`
+              : ""}
+            . Waiting for Stripe confirmation.
+          </p>
+        )}
       </div>
+
+      {canFulfillWithCode(order.status) && (
+        <p className="text-sm text-charcoal/55">
+          Ask the customer for the delivery code from their email or account. The code is not shown
+          here.
+        </p>
+      )}
     </div>
   );
 }
