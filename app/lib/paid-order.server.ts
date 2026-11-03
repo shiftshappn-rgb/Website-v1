@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { runWithDbTransaction } from "~/db.server";
 import { sendOrderConfirmationEmail } from "~/lib/email.server";
 import { resolveReviewTargetsFromOrder } from "~/lib/review-targets.server";
 import { groupOrderLines } from "~/lib/order-line-groups";
@@ -69,7 +70,9 @@ export async function recordPaidOrder(db: Db, input: RecordPaidOrderInput) {
   const deliveryTimeSlotId = blankToNull(input.deliveryTimeSlotId);
 
   try {
-    const order = await db.$transaction(async (tx) => {
+    // Nested items.create keeps the order+lines write atomic in one query.
+    // Inventory decrements run in the same helper; on Neon HTTP they are sequential.
+    const order = await runWithDbTransaction(db, async (tx) => {
       const created = await tx.order.create({
         data: {
           orderNumber: input.orderNumber,

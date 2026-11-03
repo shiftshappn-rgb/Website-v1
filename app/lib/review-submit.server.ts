@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { runDbBatch } from "~/db.server";
 import { parseReviewSubmission } from "~/lib/reviews";
 import { getCustomer } from "~/lib/session.server";
 import { customerHasVerifiedPurchase } from "~/lib/verified-purchase.server";
@@ -58,7 +59,8 @@ export async function submitProductReview({
     status: "pending" as const,
   };
 
-  await db.$transaction(
+  await runDbBatch(
+    db,
     targetProductIds.map((id) =>
       db.review.create({
         data: {

@@ -238,20 +238,42 @@ async function runProductEditAction(
       select: { id: true, colorName: true, size: true },
     });
 
+    if (variants.length === 0) {
+      return { error: "No matching variants found to delete." };
+    }
+
+    const soldRows = await db.orderItem.findMany({
+      where: { productVariantId: { in: variants.map((variant) => variant.id) } },
+      select: { productVariantId: true },
+      take: 2000,
+    });
+    const soldIds = new Set(
+      soldRows
+        .map((row) => row.productVariantId)
+        .filter((id): id is string => Boolean(id))
+    );
+
     let deleted = 0;
     const blocked: string[] = [];
 
     for (const variant of variants) {
-      const sold = await db.orderItem.findFirst({
-        where: { productVariantId: variant.id },
-        select: { id: true },
-      });
-      if (sold) {
+      if (soldIds.has(variant.id)) {
         blocked.push(`${variant.colorName} / ${variant.size}`);
         continue;
       }
-      await db.productVariant.delete({ where: { id: variant.id } });
-      deleted += 1;
+      try {
+        await db.productVariant.delete({ where: { id: variant.id } });
+        deleted += 1;
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2003"
+        ) {
+          blocked.push(`${variant.colorName} / ${variant.size}`);
+          continue;
+        }
+        throw error;
+      }
     }
 
     if (deleted === 0 && blocked.length > 0) {
@@ -290,18 +312,37 @@ async function runProductEditAction(
     const blocked: string[] = [];
 
     for (const colorName of colorNames) {
+      const colorVariants = await db.productVariant.findMany({
+        where: { productId, colorName },
+        select: { id: true },
+      });
+      if (colorVariants.length === 0) continue;
+
+      const variantIds = colorVariants.map((variant) => variant.id);
       const sold = await db.orderItem.findFirst({
-        where: { productVariant: { productId, colorName } },
+        where: { productVariantId: { in: variantIds } },
         select: { id: true },
       });
       if (sold) {
         blocked.push(colorName);
         continue;
       }
-      const result = await db.productVariant.deleteMany({
-        where: { productId, colorName },
-      });
-      if (result.count > 0) deleted += 1;
+
+      try {
+        const result = await db.productVariant.deleteMany({
+          where: { productId, colorName, id: { in: variantIds } },
+        });
+        if (result.count > 0) deleted += 1;
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2003"
+        ) {
+          blocked.push(colorName);
+          continue;
+        }
+        throw error;
+      }
     }
 
     if (deleted === 0 && blocked.length > 0) {
@@ -313,6 +354,9 @@ async function runProductEditAction(
       return {
         success: `Deleted ${deleted} colour${deleted === 1 ? "" : "s"}. Skipped ${blocked.join(", ")} (order history).`,
       };
+    }
+    if (deleted === 0) {
+      return { error: "No matching colours found to delete." };
     }
     return {
       success:
