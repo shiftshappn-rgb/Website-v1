@@ -1,5 +1,3 @@
-import { useState, type MouseEvent } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Link } from "react-router";
 import { cloudinaryImageUrl, cloudinarySrcSet } from "~/lib/cloudinary";
 import { cn } from "~/lib/utils";
@@ -13,6 +11,8 @@ export function CardImageCarousel({
   cloudName,
   className,
   imageClassName,
+  maxImages,
+  padded = false,
 }: {
   images: Array<{ publicId: string; alt?: string }>;
   alt: string;
@@ -20,94 +20,96 @@ export function CardImageCarousel({
   cloudName?: string;
   className?: string;
   imageClassName?: string;
+  /** Cap slides (e.g. homepage best sellers = 2). */
+  maxImages?: number;
+  /** Leave soft background visible above/below the product. */
+  padded?: boolean;
 }) {
-  const [index, setIndex] = useState(0);
-  const count = images.length;
-  const current = count > 0 ? images[index % count] : undefined;
-  const src = current
-    ? cloudinaryImageUrl(current.publicId, cloudName, 600) ??
-      (current.publicId.startsWith("http") || current.publicId.startsWith("/")
-        ? current.publicId
+  const slides =
+    maxImages != null && maxImages > 0 ? images.slice(0, maxImages) : images;
+  const primary = slides[0];
+  const secondary = slides[1];
+
+  const primarySrc = primary
+    ? cloudinaryImageUrl(primary.publicId, cloudName, 600) ??
+      (primary.publicId.startsWith("http") || primary.publicId.startsWith("/")
+        ? primary.publicId
         : null)
     : null;
-  const srcSet = current
-    ? cloudinarySrcSet(current.publicId, cloudName, CARD_WIDTHS)
+  const primarySrcSet = primary
+    ? cloudinarySrcSet(primary.publicId, cloudName, CARD_WIDTHS)
+    : null;
+  const secondarySrc = secondary
+    ? cloudinaryImageUrl(secondary.publicId, cloudName, 600) ??
+      (secondary.publicId.startsWith("http") || secondary.publicId.startsWith("/")
+        ? secondary.publicId
+        : null)
+    : null;
+  const secondarySrcSet = secondary
+    ? cloudinarySrcSet(secondary.publicId, cloudName, CARD_WIDTHS)
     : null;
 
-  function step(event: MouseEvent, direction: -1 | 1) {
-    event.preventDefault();
-    event.stopPropagation();
-    setIndex((value) => (value + direction + count) % count);
-  }
+  const fitClass = padded ? "object-contain" : "object-cover";
+
+  const media = (
+    <div
+      className={cn(
+        "relative aspect-[3/4] w-full overflow-hidden bg-card-soft",
+        padded && "px-3 py-5 sm:px-4 sm:py-6"
+      )}
+    >
+      <div className="relative h-full w-full">
+        {primarySrc ? (
+          <img
+            src={primarySrc}
+            srcSet={primarySrcSet ?? undefined}
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 280px"
+            alt={primary?.alt || alt}
+            loading="lazy"
+            decoding="async"
+            className={cn(
+              "absolute inset-0 h-full w-full transition-opacity duration-300",
+              fitClass,
+              secondarySrc && "group-hover:opacity-0",
+              imageClassName
+            )}
+          />
+        ) : (
+          <div className={cn("absolute inset-0 bg-card-soft", imageClassName)} />
+        )}
+        {secondarySrc ? (
+          <img
+            src={secondarySrc}
+            srcSet={secondarySrcSet ?? undefined}
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 280px"
+            alt={secondary?.alt || alt}
+            loading="lazy"
+            decoding="async"
+            aria-hidden
+            className={cn(
+              "pointer-events-none absolute inset-0 h-full w-full opacity-0 transition-opacity duration-300 group-hover:opacity-100",
+              fitClass,
+              imageClassName
+            )}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
 
   return (
-    <div className={cn("relative overflow-hidden rounded-xl bg-stone", className)}>
+    <div
+      className={cn(
+        "relative overflow-hidden rounded-xl bg-card-soft [transform:translateZ(0)]",
+        className
+      )}
+    >
       {href ? (
         <Link to={href} prefetch="intent" className="block" tabIndex={-1} aria-hidden>
-          {src ? (
-            <img
-              src={src}
-              srcSet={srcSet ?? undefined}
-              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 280px"
-              alt={current?.alt || alt}
-              loading="lazy"
-              decoding="async"
-              className={cn("aspect-[3/4] w-full object-cover", imageClassName)}
-            />
-          ) : (
-            <div className={cn("aspect-[3/4] w-full bg-stone", imageClassName)} />
-          )}
+          {media}
         </Link>
-      ) : src ? (
-        <img
-          src={src}
-          srcSet={srcSet ?? undefined}
-          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 280px"
-          alt={current?.alt || alt}
-          loading="lazy"
-          decoding="async"
-          className={cn("aspect-[3/4] w-full object-cover", imageClassName)}
-        />
       ) : (
-        <div className={cn("aspect-[3/4] w-full bg-stone", imageClassName)} />
-      )}
-      {count > 1 && (
-        <>
-          <button
-            type="button"
-            aria-label="Previous image"
-            onClick={(event) => step(event, -1)}
-            className="absolute left-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-charcoal shadow-sm"
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <button
-            type="button"
-            aria-label="Next image"
-            onClick={(event) => step(event, 1)}
-            className="absolute right-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-charcoal shadow-sm"
-          >
-            <ChevronRight size={16} />
-          </button>
-          <div className="absolute inset-x-0 bottom-2 z-10 flex justify-center gap-1.5">
-            {images.map((image, imageIndex) => (
-              <button
-                key={image.publicId}
-                type="button"
-                aria-label={`Show image ${imageIndex + 1}`}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setIndex(imageIndex);
-                }}
-                className={cn(
-                  "h-1.5 w-1.5 rounded-full",
-                  imageIndex === index % count ? "bg-white" : "bg-white/50"
-                )}
-              />
-            ))}
-          </div>
-        </>
+        media
       )}
     </div>
   );

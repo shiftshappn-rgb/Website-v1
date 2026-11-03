@@ -339,12 +339,19 @@ export async function loadProductGridsByBlockId(
   for (const block of slugBlocks) {
     result[block.id] = block.slugs
       .map((slug) => bySlug.get(slug))
-      .filter((item): item is ProductCardData => item != null);
+      .filter((item): item is ProductCardData => item != null)
+      .map(trimCardImagesForHome);
   }
   for (const entry of collectionResults) {
-    result[entry.id] = entry.products;
+    result[entry.id] = entry.products.map(trimCardImagesForHome);
   }
   return result;
+}
+
+/** Homepage carousels only need 2 slides — keep the SSR payload light. */
+function trimCardImagesForHome(product: ProductCardData): ProductCardData {
+  if (!product.images || product.images.length <= 2) return product;
+  return { ...product, images: product.images.slice(0, 2) };
 }
 
 async function resolveProductOrSetCardsBySlugs(slugs: string[]) {

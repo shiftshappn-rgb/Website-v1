@@ -48,7 +48,7 @@ export function ProductCardTile({
 
   return (
     <article className={`group ${className}`} style={style}>
-      <div className="relative mb-3 shadow-sm transition-shadow duration-300 group-hover:shadow-lg">
+      <div className="relative mb-3 overflow-hidden rounded-xl shadow-sm transition-shadow duration-300 group-hover:shadow-lg">
         <CardImageCarousel
           images={
             product.images?.length
@@ -60,7 +60,10 @@ export function ProductCardTile({
           alt={product.imageAlt ?? product.name}
           href={href}
           cloudName={cloudName}
-          imageClassName="transition-transform duration-500 group-hover:scale-105"
+          maxImages={2}
+          padded
+          className="rounded-none"
+          imageClassName="transition-opacity duration-300"
         />
         <span className="pointer-events-none absolute inset-x-0 bottom-8 z-10 mx-auto w-fit rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-medium uppercase tracking-wider text-charcoal opacity-0 translate-y-2 transition-all duration-300 group-hover:opacity-100 group-hover:translate-y-0">
           Quick view
