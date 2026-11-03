@@ -185,9 +185,11 @@ export async function action({ request }: Route.ActionArgs) {
   let stripe;
   try {
     stripe = getStripe();
-  } catch (error: any) {
-    // BYPASS STRIPE FOR NOW: Just redirect directly to success page since we don't have keys
-    return redirect(`/checkout/success?session_id=bypassed_stripe_for_now`);
+  } catch {
+    return data(
+      { error: "Payments are not configured. Set STRIPE_SECRET_KEY." },
+      { status: 503 }
+    );
   }
 
   const discounts =

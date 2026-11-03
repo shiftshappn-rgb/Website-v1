@@ -141,6 +141,38 @@ function timeWindowLabel(slot: { label: string; startTime: string; endTime: stri
   return `${slot.label} (${slot.startTime}–${slot.endTime})`;
 }
 
+/** Inventory restore + disable purchased gift cards after a refund. */
+export async function applyOrderRefundSideEffects(
+  db: Db,
+  orderId: string
+): Promise<void> {
+  const order = await db.order.findUnique({
+    where: { id: orderId },
+    include: { items: true },
+  });
+  if (!order) return;
+
+  for (const item of order.items) {
+    if (item.lineType === "product" && item.productVariantId) {
+      await db.productVariant.update({
+        where: { id: item.productVariantId },
+        data: { inventoryQty: { increment: item.quantity } },
+      });
+    }
+  }
+
+  const giftCards = await db.giftCard.findMany({
+    where: { orderId: order.id },
+    select: { id: true },
+  });
+  for (const card of giftCards) {
+    await db.giftCard.update({
+      where: { id: card.id },
+      data: { status: "disabled", balance: 0 },
+    });
+  }
+}
+
 export async function deliverOrderConfirmation(db: Db, orderId: string) {
   const order = await db.order.findUnique({
     where: { id: orderId },
