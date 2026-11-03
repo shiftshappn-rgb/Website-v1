@@ -1,6 +1,6 @@
 import { PrismaNeon, PrismaNeonHTTP } from "@prisma/adapter-neon";
 import { neonConfig } from "@neondatabase/serverless";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import ws from "ws";
 
 /** Bump when Prisma schema gains fields that must invalidate a cached client. */
@@ -89,4 +89,42 @@ export const db = new Proxy({} as PrismaClient, {
 
 export function tryDb(): PrismaClient | null {
   return getPrismaClient();
+}
+
+/** True when using PrismaNeonHTTP (no interactive / batch $transaction support). */
+export function isHttpDbAdapter() {
+  return isServerlessRuntime();
+}
+
+/**
+ * Run work in a Prisma interactive transaction when the adapter supports it.
+ * On Vercel/Neon HTTP, falls back to sequential queries on the root client.
+ */
+export async function runWithDbTransaction<T>(
+  client: PrismaClient,
+  fn: (tx: Prisma.TransactionClient) => Promise<T>
+): Promise<T> {
+  if (isHttpDbAdapter()) {
+    return fn(client);
+  }
+  return client.$transaction(fn);
+}
+
+/**
+ * Run a list of Prisma writes as a batch transaction when supported.
+ * On Neon HTTP, awaits each operation in order instead.
+ */
+export async function runDbBatch<T>(
+  client: PrismaClient,
+  operations: Array<Prisma.PrismaPromise<T>>
+): Promise<T[]> {
+  if (operations.length === 0) return [];
+  if (isHttpDbAdapter()) {
+    const results: T[] = [];
+    for (const operation of operations) {
+      results.push(await operation);
+    }
+    return results;
+  }
+  return client.$transaction(operations);
 }

@@ -18,7 +18,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   await requireAdmin(request);
-  const colors = await listCatalogColors();
+  const colors = await listCatalogColors({ sync: true });
   return { dbAvailable: true as const, colors };
 }
 

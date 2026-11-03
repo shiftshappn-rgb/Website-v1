@@ -27,12 +27,17 @@ function staticCatalogColors(): CatalogColorOption[] {
   }));
 }
 
-export async function listCatalogColors(): Promise<CatalogColorOption[]> {
+export async function listCatalogColors(options?: {
+  /** When true, seed missing catalog rows. Avoid on hot product-edit paths (Vercel/Neon HTTP). */
+  sync?: boolean;
+}): Promise<CatalogColorOption[]> {
   const db = tryDb();
   if (!db?.catalogColor) return staticCatalogColors();
 
   try {
-    await ensureCatalogColors();
+    if (options?.sync) {
+      await ensureCatalogColors();
+    }
     const rows = await db.catalogColor.findMany({
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       select: {
