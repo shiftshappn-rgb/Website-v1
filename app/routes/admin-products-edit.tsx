@@ -329,10 +329,12 @@ async function runProductEditAction(
       }
 
       try {
-        const result = await db.productVariant.deleteMany({
-          where: { productId, colorName, id: { in: variantIds } },
-        });
-        if (result.count > 0) deleted += 1;
+        let removed = 0;
+        for (const variantId of variantIds) {
+          await db.productVariant.delete({ where: { id: variantId } });
+          removed += 1;
+        }
+        if (removed > 0) deleted += 1;
       } catch (error) {
         if (
           error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -382,12 +384,19 @@ async function runProductEditAction(
       return { error: parsed.error };
     }
 
-    const updated = await db.productVariant.updateMany({
+    const colorVariants = await db.productVariant.findMany({
       where: { productId, colorName },
-      data: { images: parsed.images as Prisma.InputJsonValue },
+      select: { id: true },
     });
-    if (updated.count === 0) {
+    if (colorVariants.length === 0) {
       return { error: "No variants found for that colour." };
+    }
+    // Avoid updateMany — Prisma wraps it in a txn that Neon HTTP rejects.
+    for (const variant of colorVariants) {
+      await db.productVariant.update({
+        where: { id: variant.id },
+        data: { images: parsed.images as Prisma.InputJsonValue },
+      });
     }
     return { success: "Images saved." };
   }

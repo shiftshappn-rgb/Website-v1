@@ -219,10 +219,16 @@ async function handleCheckoutCompleted(
 
   const discountCode = metadata.discountCode?.trim();
   if (discountCode) {
-    await db.discountCode.updateMany({
+    const promo = await db.discountCode.findUnique({
       where: { code: discountCode },
-      data: { usedCount: { increment: 1 } },
+      select: { id: true },
     });
+    if (promo) {
+      await db.discountCode.update({
+        where: { id: promo.id },
+        data: { usedCount: { increment: 1 } },
+      });
+    }
   }
 
   const giftCardCode = metadata.giftCardCode?.trim();
@@ -324,8 +330,14 @@ async function handleChargeRefunded(
     }
   }
 
-  await db.giftCard.updateMany({
+  const giftCards = await db.giftCard.findMany({
     where: { orderId: order.id },
-    data: { status: "disabled", balance: 0 },
+    select: { id: true },
   });
+  for (const card of giftCards) {
+    await db.giftCard.update({
+      where: { id: card.id },
+      data: { status: "disabled", balance: 0 },
+    });
+  }
 }

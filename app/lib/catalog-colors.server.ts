@@ -1,6 +1,6 @@
 import { CATALOG_COLORS } from "~/lib/product-catalog";
 import { slugify } from "~/lib/utils";
-import { tryDb } from "~/db.server";
+import { createEach, tryDb } from "~/db.server";
 
 export type CatalogColorOption = {
   id: string;
@@ -107,8 +107,8 @@ export async function ensureCatalogColors() {
 
     if (missing.length === 0) return;
 
-    await db.catalogColor.createMany({
-      data: missing,
+    // Avoid createMany — Prisma wraps it in a txn that Neon HTTP rejects.
+    await createEach(missing, (row) => db.catalogColor.create({ data: row }), {
       skipDuplicates: true,
     });
   } catch (error) {

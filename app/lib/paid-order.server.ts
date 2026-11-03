@@ -70,8 +70,8 @@ export async function recordPaidOrder(db: Db, input: RecordPaidOrderInput) {
   const deliveryTimeSlotId = blankToNull(input.deliveryTimeSlotId);
 
   try {
-    // Nested items.create keeps the order+lines write atomic in one query.
-    // Inventory decrements run in the same helper; on Neon HTTP they are sequential.
+    // Neon HTTP rejects nested writes / $transaction. Create order, then lines,
+    // then inventory updates as separate single-statement queries.
     const order = await runWithDbTransaction(db, async (tx) => {
       const created = await tx.order.create({
         data: {
@@ -92,20 +92,23 @@ export async function recordPaidOrder(db: Db, input: RecordPaidOrderInput) {
           deliveryTimeSlotId,
           shippingMethod: blankToNull(input.shippingMethod),
           shippingCost: input.shippingCost ?? input.shipping,
-          items: {
-            create: input.items.map((item) => ({
-              lineType: item.kind === "gift_card" ? "gift_card" : "product",
-              productVariantId:
-                item.kind === "product" ? blankToNull(item.variantId) : null,
-              quantity: item.quantity,
-              priceAtPurchase: item.price,
-              productName: item.productName,
-              variantLabel: item.variantLabel || "—",
-            })),
-          },
         },
-        include: { items: true },
       });
+
+      for (const item of input.items) {
+        await tx.orderItem.create({
+          data: {
+            orderId: created.id,
+            lineType: item.kind === "gift_card" ? "gift_card" : "product",
+            productVariantId:
+              item.kind === "product" ? blankToNull(item.variantId) : null,
+            quantity: item.quantity,
+            priceAtPurchase: item.price,
+            productName: item.productName,
+            variantLabel: item.variantLabel || "—",
+          },
+        });
+      }
 
       for (const item of input.items) {
         if (item.kind !== "product" || !blankToNull(item.variantId)) continue;
@@ -115,7 +118,10 @@ export async function recordPaidOrder(db: Db, input: RecordPaidOrderInput) {
         });
       }
 
-      return created;
+      return tx.order.findUniqueOrThrow({
+        where: { id: created.id },
+        include: { items: true },
+      });
     });
 
     return { order, alreadyExisted: false as const };

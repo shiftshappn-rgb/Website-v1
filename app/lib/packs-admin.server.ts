@@ -148,14 +148,17 @@ export async function savePackProducts(
   ];
 
   await db.packItem.deleteMany({ where: { packId } });
-  await db.packItem.createMany({
-    data: ordered.map((entry, index) => ({
-      packId,
-      productId: entry.productId,
-      isPrimary: entry.isPrimary,
-      sortOrder: index,
-    })),
-  });
+  // Avoid createMany — Prisma wraps it in a txn that Neon HTTP rejects.
+  for (const [index, entry] of ordered.entries()) {
+    await db.packItem.create({
+      data: {
+        packId,
+        productId: entry.productId,
+        isPrimary: entry.isPrimary,
+        sortOrder: index,
+      },
+    });
+  }
 }
 
 export function parsePackProductEntries(formData: FormData) {

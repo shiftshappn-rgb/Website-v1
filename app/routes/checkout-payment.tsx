@@ -112,10 +112,16 @@ export async function action({ request }: Route.ActionArgs) {
     }
 
     if (phase1.promoCode) {
-      await db.discountCode.updateMany({
+      const promo = await db.discountCode.findUnique({
         where: { code: String(phase1.promoCode).trim().toUpperCase() },
-        data: { usedCount: { increment: 1 } },
+        select: { id: true },
       });
+      if (promo) {
+        await db.discountCode.update({
+          where: { id: promo.id },
+          data: { usedCount: { increment: 1 } },
+        });
+      }
     }
 
     const hasProducts = cartItems.some((item: CartItem) => item.kind !== "gift_card");
