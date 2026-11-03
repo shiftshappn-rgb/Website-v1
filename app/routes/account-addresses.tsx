@@ -50,14 +50,16 @@ export async function action({ request }: Route.ActionArgs) {
 
   if (intent === "setDefault") {
     const id = formData.get("id") as string;
-    await db.address.updateMany({
+    const addresses = await db.address.findMany({
       where: { customerId: customer.id },
-      data: { isDefault: false },
+      select: { id: true },
     });
-    await db.address.updateMany({
-      where: { id, customerId: customer.id },
-      data: { isDefault: true },
-    });
+    for (const address of addresses) {
+      await db.address.update({
+        where: { id: address.id },
+        data: { isDefault: address.id === id },
+      });
+    }
     return { success: true };
   }
 
@@ -83,16 +85,40 @@ export async function action({ request }: Route.ActionArgs) {
   };
 
   if (addressId) {
-    await db.address.updateMany({
+    const owned = await db.address.findFirst({
       where: { id: addressId, customerId: customer.id },
-      data: payload,
+      select: { id: true },
     });
+    if (owned) {
+      if (payload.isDefault) {
+        const others = await db.address.findMany({
+          where: { customerId: customer.id, NOT: { id: addressId } },
+          select: { id: true },
+        });
+        for (const address of others) {
+          await db.address.update({
+            where: { id: address.id },
+            data: { isDefault: false },
+          });
+        }
+      }
+      await db.address.update({
+        where: { id: addressId },
+        data: payload,
+      });
+    }
   } else {
     if (payload.isDefault) {
-      await db.address.updateMany({
+      const existing = await db.address.findMany({
         where: { customerId: customer.id },
-        data: { isDefault: false },
+        select: { id: true },
       });
+      for (const address of existing) {
+        await db.address.update({
+          where: { id: address.id },
+          data: { isDefault: false },
+        });
+      }
     }
     await db.address.create({
       data: { ...payload, customerId: customer.id },

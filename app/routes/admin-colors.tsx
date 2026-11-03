@@ -66,10 +66,16 @@ export async function action({ request }: Route.ActionArgs) {
     });
 
     if (previous.name !== name || previous.hex !== hex) {
-      await db.productVariant.updateMany({
+      const variants = await db.productVariant.findMany({
         where: { colorName: previous.name },
-        data: { colorName: name, colorHex: hex },
+        select: { id: true },
       });
+      for (const variant of variants) {
+        await db.productVariant.update({
+          where: { id: variant.id },
+          data: { colorName: name, colorHex: hex },
+        });
+      }
     }
 
     return redirect("/admin/colors");

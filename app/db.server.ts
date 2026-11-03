@@ -128,3 +128,42 @@ export async function runDbBatch<T>(
   }
   return client.$transaction(operations);
 }
+
+function isUniqueConflict(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+}
+
+/**
+ * Prisma 6 wraps updateMany/createMany in an internal transaction, which Neon HTTP
+ * rejects ("Transactions are not supported in HTTP mode"). Prefer these helpers
+ * on Vercel, or any path that may run under PrismaNeonHTTP.
+ */
+export async function updateByIds(
+  ids: string[],
+  updateOne: (id: string) => Promise<unknown>
+): Promise<{ count: number }> {
+  let count = 0;
+  for (const id of ids) {
+    await updateOne(id);
+    count += 1;
+  }
+  return { count };
+}
+
+export async function createEach<T>(
+  rows: T[],
+  createOne: (row: T) => Promise<unknown>,
+  options?: { skipDuplicates?: boolean }
+): Promise<{ count: number }> {
+  let count = 0;
+  for (const row of rows) {
+    try {
+      await createOne(row);
+      count += 1;
+    } catch (error) {
+      if (options?.skipDuplicates && isUniqueConflict(error)) continue;
+      throw error;
+    }
+  }
+  return { count };
+}

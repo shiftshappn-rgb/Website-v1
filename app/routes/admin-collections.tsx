@@ -74,13 +74,14 @@ export async function action({ request }: Route.ActionArgs) {
 
     await db.productCollection.deleteMany({ where: { collectionId } });
 
-    if (productIds.length > 0) {
-      await db.productCollection.createMany({
-        data: productIds.map((productId, index) => ({
+    // Avoid createMany — Prisma wraps it in a txn that Neon HTTP rejects.
+    for (const [index, productId] of productIds.entries()) {
+      await db.productCollection.create({
+        data: {
           collectionId,
           productId,
           sortOrder: index,
-        })),
+        },
       });
     }
 

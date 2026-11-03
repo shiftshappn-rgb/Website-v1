@@ -132,7 +132,13 @@ export async function action({ request }: Route.ActionArgs) {
   };
 
   if (intent === "delete") {
-    await db.review.deleteMany({ where: mirrorWhere });
+    const mirrored = await db.review.findMany({
+      where: mirrorWhere,
+      select: { id: true },
+    });
+    for (const row of mirrored) {
+      await db.review.delete({ where: { id: row.id } });
+    }
     return redirect(returnTo);
   }
 
@@ -142,10 +148,17 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   // Keep mirrored set-piece reviews in the same status.
-  await db.review.updateMany({
+  // Avoid updateMany — Prisma wraps it in a txn that Neon HTTP rejects.
+  const mirrored = await db.review.findMany({
     where: mirrorWhere,
-    data: { status },
+    select: { id: true },
   });
+  for (const row of mirrored) {
+    await db.review.update({
+      where: { id: row.id },
+      data: { status },
+    });
+  }
 
   return redirect(returnTo);
 }
