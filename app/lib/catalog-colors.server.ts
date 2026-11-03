@@ -69,17 +69,23 @@ export async function ensureCatalogColors() {
         sortOrder: index,
       }));
 
+    // Avoid Prisma `distinct` — Neon HTTP adapter has flaked on it in production.
     const variantColors = await db.productVariant.findMany({
-      distinct: ["colorName"],
       select: { colorName: true, colorHex: true },
+      take: 2000,
     });
+    const seenVariantNames = new Set<string>();
 
     for (const variant of variantColors) {
-      const hex = normalizeHex(variant.colorHex);
-      if (!hex) continue;
       const name = variant.colorName.trim();
       if (!name) continue;
-      if (byName.has(name.toLowerCase())) continue;
+      const nameKey = name.toLowerCase();
+      if (seenVariantNames.has(nameKey)) continue;
+      seenVariantNames.add(nameKey);
+
+      const hex = normalizeHex(variant.colorHex);
+      if (!hex) continue;
+      if (byName.has(nameKey)) continue;
       const slug = slugify(name);
       if (bySlug.has(slug) || toCreate.some((color) => color.slug === slug)) continue;
       toCreate.push({
