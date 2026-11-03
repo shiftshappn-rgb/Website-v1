@@ -21,7 +21,7 @@ function PieceThumb({
     : null;
 
   return (
-    <div className={cn("relative min-h-0 overflow-hidden bg-stone", className)}>
+    <div className={cn("relative min-h-0 overflow-hidden bg-card-soft", className)}>
       {src ? (
         <img
           src={src}
@@ -124,7 +124,7 @@ export function BundleCard({
         prefetch="intent"
         className="block outline-none focus-visible:ring-2 focus-visible:ring-navy focus-visible:ring-offset-4"
       >
-        <div className="relative aspect-4/5 overflow-hidden bg-stone">
+        <div className="relative aspect-4/5 overflow-hidden bg-card-soft">
           <Collage pieces={pieces} cloudName={cloudName} />
 
           <div

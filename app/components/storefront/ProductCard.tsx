@@ -56,7 +56,7 @@ export function ProductCard({ product, cloudName }: ProductCardProps) {
         alt={product.imageAlt ?? product.name}
         href={href}
         cloudName={cloudName}
-        imageClassName="transition-opacity group-hover:opacity-90"
+        imageClassName="transition-opacity group-hover:opacity-90 bg-card-soft"
       />
       <Link to={href} prefetch="intent" className="block">
         <h3 className="mt-3 text-sm font-medium text-charcoal transition-colors line-clamp-2 group-hover:text-navy">
