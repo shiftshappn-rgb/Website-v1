@@ -91,7 +91,7 @@ export default function AdminCustomers({ loaderData }: Route.ComponentProps) {
       {
         header: "Joined",
         accessorKey: "createdAt",
-        cell: ({ row }) => new Date(row.original.createdAt).toLocaleDateString(),
+        cell: ({ row }) => new Date(row.original.createdAt).toLocaleDateString("en-CA", { timeZone: "America/Halifax" }),
         size: 120,
       },
     ],

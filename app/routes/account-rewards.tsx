@@ -64,7 +64,7 @@ export default function AccountRewards({ loaderData }: Route.ComponentProps) {
               <div>
                 <p className="text-sm text-charcoal">{entry.reason}</p>
                 <p className="text-xs text-charcoal/50">
-                  {new Date(entry.createdAt).toLocaleDateString()}
+                  {new Date(entry.createdAt).toLocaleDateString("en-CA", { timeZone: "America/Halifax" })}
                 </p>
               </div>
               <p className="font-medium text-navy">

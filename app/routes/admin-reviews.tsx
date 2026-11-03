@@ -264,7 +264,7 @@ export default function AdminReviews({ loaderData, actionData }: Route.Component
                       </>
                     ) : null}
                     {" · "}
-                    {new Date(review.createdAt).toLocaleDateString()}
+                    {new Date(review.createdAt).toLocaleDateString("en-CA", { timeZone: "America/Halifax" })}
                   </p>
                 </div>
                 <Badge variant={statusVariant[review.status]}>{review.status}</Badge>

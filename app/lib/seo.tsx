@@ -1,11 +1,13 @@
-function getAppUrl(): string {
-  if (typeof process !== "undefined" && process.env.APP_URL) {
-    return process.env.APP_URL;
-  }
-  if (typeof window !== "undefined" && window.location?.origin) {
-    return window.location.origin;
-  }
-  return "http://localhost:5173";
+function getAppUrl(override?: string): string {
+  const raw =
+    override ||
+    (typeof process !== "undefined" ? process.env.APP_URL : undefined) ||
+    // Vite-exposed fallback so client and server share one baked value.
+    (typeof import.meta !== "undefined"
+      ? (import.meta.env.VITE_APP_URL as string | undefined)
+      : undefined) ||
+    "http://localhost:5173";
+  return String(raw).replace(/\/$/, "");
 }
 
 export function getCanonicalUrl(path: string): string {
@@ -37,8 +39,8 @@ export function buildMeta({
   ];
 }
 
-export function organizationJsonLd() {
-  const appUrl = getAppUrl();
+export function organizationJsonLd(appUrlOverride?: string) {
+  const appUrl = getAppUrl(appUrlOverride);
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
@@ -134,6 +136,8 @@ export function JsonLd({ data }: { data: Record<string, unknown> }) {
   return (
     <script
       type="application/ld+json"
+      // APP_URL (SSR) can differ from the browser origin; crawlers use the SSR HTML.
+      suppressHydrationWarning
       dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
     />
   );

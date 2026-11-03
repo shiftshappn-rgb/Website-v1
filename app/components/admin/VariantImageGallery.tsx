@@ -93,7 +93,7 @@ export function VariantImageGallery({
                   key={`${image.publicId}-${index}`}
                   className="overflow-hidden rounded-xl border border-charcoal/10 bg-white"
                 >
-                  <div className="relative aspect-[3/4] bg-sand">
+                  <div className="relative aspect-[3/4] bg-card-soft">
                     {src ? (
                       <img
                         src={src}

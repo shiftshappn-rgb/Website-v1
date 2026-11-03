@@ -153,7 +153,7 @@ export default function AdminPacksIndex({ loaderData, actionData }: Route.Compon
                     {formatCurrency(pack.sellPrice)}
                   </td>
                   <td className="px-4 py-3 text-charcoal/55">
-                    {new Date(pack.updatedAt).toLocaleDateString()}
+                    {new Date(pack.updatedAt).toLocaleDateString("en-CA", { timeZone: "America/Halifax" })}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap items-center gap-2">

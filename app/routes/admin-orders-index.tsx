@@ -114,7 +114,7 @@ export default function AdminOrdersIndex({ loaderData }: Route.ComponentProps) {
       {
         header: "Date",
         accessorKey: "createdAt",
-        cell: ({ row }) => new Date(row.original.createdAt).toLocaleDateString(),
+        cell: ({ row }) => new Date(row.original.createdAt).toLocaleDateString("en-CA", { timeZone: "America/Halifax" }),
         size: 120,
       },
       {
