@@ -4,7 +4,11 @@ import type { Route } from "./+types/api-webhook";
 import { tryDb } from "~/db.server";
 import { generateGiftCardCode } from "~/lib/commerce.server";
 import { sendGiftCardEmail } from "~/lib/email.server";
-import { deliverOrderConfirmation, recordPaidOrder } from "~/lib/paid-order.server";
+import {
+  applyOrderRefundSideEffects,
+  deliverOrderConfirmation,
+  recordPaidOrder,
+} from "~/lib/paid-order.server";
 import { getStripe } from "~/lib/stripe.server";
 import { formatCurrency, generateOrderNumber } from "~/lib/utils";
 
@@ -86,6 +90,11 @@ export async function action({ request }: Route.ActionArgs) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
       await handleCheckoutCompleted(db, session);
+      break;
+    }
+    case "payment_intent.succeeded": {
+      const paymentIntent = event.data.object as Stripe.PaymentIntent;
+      await handlePaymentIntentSucceeded(db, paymentIntent);
       break;
     }
     case "charge.refunded": {
@@ -298,6 +307,22 @@ async function handleCheckoutCompleted(
   }
 }
 
+/** Idempotent backup — primary order creation is `/checkout/payment` place-order. */
+async function handlePaymentIntentSucceeded(
+  db: NonNullable<ReturnType<typeof tryDb>>,
+  paymentIntent: Stripe.PaymentIntent
+) {
+  const existing = await db.order.findFirst({
+    where: { stripePaymentIntentId: paymentIntent.id },
+    select: { id: true, orderNumber: true },
+  });
+  if (existing) return;
+
+  console.warn(
+    `[webhook] payment_intent.succeeded with no matching order yet: ${paymentIntent.id}`
+  );
+}
+
 async function handleChargeRefunded(
   db: NonNullable<ReturnType<typeof tryDb>>,
   charge: Stripe.Charge
@@ -311,33 +336,10 @@ async function handleChargeRefunded(
 
   const order = await db.order.findFirst({
     where: { stripePaymentIntentId: paymentIntentId },
-    include: { items: true },
+    select: { id: true, status: true },
   });
 
   if (!order || order.status === "refunded") return;
 
-  await db.order.update({
-    where: { id: order.id },
-    data: { status: "refunded" },
-  });
-
-  for (const item of order.items) {
-    if (item.lineType === "product" && item.productVariantId) {
-      await db.productVariant.update({
-        where: { id: item.productVariantId },
-        data: { inventoryQty: { increment: item.quantity } },
-      });
-    }
-  }
-
-  const giftCards = await db.giftCard.findMany({
-    where: { orderId: order.id },
-    select: { id: true },
-  });
-  for (const card of giftCards) {
-    await db.giftCard.update({
-      where: { id: card.id },
-      data: { status: "disabled", balance: 0 },
-    });
-  }
+  await applyOrderRefundSideEffects(db, order.id);
 }

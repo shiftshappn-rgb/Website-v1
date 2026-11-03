@@ -8,6 +8,7 @@ import {
   resolveGiftCard,
 } from "~/lib/commerce.server";
 import { getStripe } from "~/lib/stripe.server";
+import { computeTaxAmount, loadTaxRatePercent } from "~/lib/tax.server";
 import { getVariantPrice } from "~/lib/utils";
 
 const APP_URL = process.env.APP_URL ?? "http://localhost:5173";
@@ -175,8 +176,8 @@ export async function action({ request }: Route.ActionArgs) {
     giftCardAmount = Math.min(Number(resolved.card.balance), merchandise + shipping);
   }
 
-  const tax =
-    Math.round((merchandise + shipping - giftCardAmount) * 0.13 * 100) / 100;
+  const taxRatePercent = await loadTaxRatePercent(db);
+  const tax = computeTaxAmount(merchandise + shipping - giftCardAmount, taxRatePercent);
   const total = Math.max(0, merchandise + shipping - giftCardAmount + tax);
   const stripeOriginal = subtotal + originalShipping;
   const stripePayable = merchandise + shipping - giftCardAmount;
@@ -185,9 +186,11 @@ export async function action({ request }: Route.ActionArgs) {
   let stripe;
   try {
     stripe = getStripe();
-  } catch (error: any) {
-    // BYPASS STRIPE FOR NOW: Just redirect directly to success page since we don't have keys
-    return redirect(`/checkout/success?session_id=bypassed_stripe_for_now`);
+  } catch {
+    return data(
+      { error: "Payments are not configured. Set STRIPE_SECRET_KEY." },
+      { status: 503 }
+    );
   }
 
   const discounts =

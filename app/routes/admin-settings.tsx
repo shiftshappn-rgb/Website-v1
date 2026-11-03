@@ -12,6 +12,7 @@ const SETTING_KEYS = [
   "storeName",
   "supportEmail",
   "freeShippingThreshold",
+  "taxRate",
   "announcementBanner",
 ] as const;
 
@@ -30,6 +31,8 @@ async function loadSettings(): Promise<SettingsMap> {
     } else if (typeof val === "object" && val !== null) {
       if ("threshold" in val) {
         map.lowStockThreshold = String((val as { threshold: number }).threshold);
+      } else if ("percent" in val) {
+        map.taxRate = String((val as { percent: number }).percent);
       } else if ("text" in val) {
         map.announcementBanner = String((val as { text: string }).text);
       } else {
@@ -43,6 +46,7 @@ async function loadSettings(): Promise<SettingsMap> {
     storeName: map.storeName ?? "ShiftsHappn",
     supportEmail: map.supportEmail ?? "",
     freeShippingThreshold: map.freeShippingThreshold ?? "100",
+    taxRate: map.taxRate ?? "13",
     announcementBanner: map.announcementBanner ?? "",
   };
 }
@@ -72,6 +76,10 @@ export async function action({ request }: Route.ActionArgs) {
   const freeShippingThreshold = parseFloat(
     String(formData.get("freeShippingThreshold") ?? "100")
   );
+  const taxRateRaw = parseFloat(String(formData.get("taxRate") ?? "13"));
+  const taxRate = Number.isFinite(taxRateRaw)
+    ? Math.min(100, Math.max(0, Math.round(taxRateRaw * 100) / 100))
+    : 13;
   const announcementBanner = String(formData.get("announcementBanner") ?? "").trim();
 
   const updates: { key: string; value: object | string | number }[] = [
@@ -79,6 +87,7 @@ export async function action({ request }: Route.ActionArgs) {
     { key: "storeName", value: storeName },
     { key: "supportEmail", value: supportEmail },
     { key: "freeShippingThreshold", value: freeShippingThreshold },
+    { key: "taxRate", value: { percent: taxRate } },
     { key: "announcementBanner", value: { text: announcementBanner } },
   ];
 
@@ -142,6 +151,21 @@ export default function AdminSettings({ loaderData, actionData }: Route.Componen
               min="0"
               defaultValue={settings.freeShippingThreshold}
             />
+            <Input
+              label="Tax rate (%)"
+              name="taxRate"
+              type="number"
+              step="0.01"
+              min="0"
+              max="100"
+              defaultValue={settings.taxRate}
+              required
+            />
+            <p className="text-xs text-charcoal/50">
+              Applied at checkout on merchandise + shipping (after discounts/gift cards). Set
+              to 0 to treat prices as tax-inclusive — checkout will show “Inclusive of tax”
+              instead of a tax line.
+            </p>
           </fieldset>
 
           <fieldset className="space-y-4">

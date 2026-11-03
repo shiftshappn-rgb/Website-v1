@@ -1,6 +1,15 @@
 import { Outlet, Link, useLocation } from "react-router";
+import type { Route } from "./+types/checkout-layout";
 import { CheckoutProvider, useCheckout } from "~/lib/checkout-context";
+import { tryDb } from "~/db.server";
+import { loadTaxRatePercent } from "~/lib/tax.server";
 import { cn } from "~/lib/utils";
+
+export async function loader(_args: Route.LoaderArgs) {
+  const db = tryDb();
+  const taxRatePercent = await loadTaxRatePercent(db);
+  return { taxRatePercent };
+}
 
 const STEPS = [
   { number: 1, label: "Cart & Account", href: "/checkout", short: "Cart" },

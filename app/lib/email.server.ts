@@ -24,6 +24,7 @@ export async function sendOrderConfirmationEmail({
   orderNumber,
   total,
   tax,
+  taxAmount = 0,
   items,
   siteName,
   timeWindow,
@@ -34,6 +35,8 @@ export async function sendOrderConfirmationEmail({
   orderNumber: string;
   total: string;
   tax: string;
+  /** When 0, email shows “Inclusive of tax” instead of a tax line. */
+  taxAmount?: number;
   items: Array<{ name: string; quantity: number; price: string }>;
   siteName?: string | null;
   timeWindow?: string | null;
@@ -105,7 +108,11 @@ export async function sendOrderConfirmationEmail({
         ${handoverHtml}
         <table style="width:100%;border-collapse:collapse;margin:24px 0">
           ${itemsHtml}
-          <tr><td style="padding:12px 0;border-top:1px solid #F6F1E9">HST</td><td style="padding:12px 0;border-top:1px solid #F6F1E9;text-align:right">${tax} CAD</td></tr>
+          ${
+            taxAmount <= 0
+              ? `<tr><td style="padding:12px 0;border-top:1px solid #F6F1E9">Inclusive of tax</td><td style="padding:12px 0;border-top:1px solid #F6F1E9;text-align:right">—</td></tr>`
+              : `<tr><td style="padding:12px 0;border-top:1px solid #F6F1E9">Tax</td><td style="padding:12px 0;border-top:1px solid #F6F1E9;text-align:right">${tax} CAD</td></tr>`
+          }
           <tr><td style="padding:12px 0"><strong>Total</strong></td><td style="padding:12px 0;text-align:right"><strong>${total} CAD</strong></td></tr>
         </table>
         ${reviewHtml}

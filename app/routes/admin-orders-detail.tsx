@@ -5,6 +5,7 @@ import { Button } from "~/components/ui/Button";
 import { DatabaseUnavailable } from "~/components/admin/DatabaseUnavailable";
 import { db, isDatabaseAvailable } from "~/db.server";
 import { groupOrderLines } from "~/lib/order-line-groups";
+import { applyOrderRefundSideEffects } from "~/lib/paid-order.server";
 import { getStripe } from "~/lib/stripe.server";
 import { formatCurrency } from "~/lib/utils";
 import { requireAdmin } from "~/lib/session.server";
@@ -86,6 +87,12 @@ export async function action({ request, params }: Route.ActionArgs) {
       return { error: "No Stripe payment intent found for this order." };
     }
 
+    if (order.stripePaymentIntentId.startsWith("pi_mock_")) {
+      return {
+        error: "This order used a mock payment and cannot be refunded via Stripe.",
+      };
+    }
+
     if (order.status === "refunded") {
       return { error: "Order is already refunded." };
     }
@@ -96,10 +103,8 @@ export async function action({ request, params }: Route.ActionArgs) {
         payment_intent: order.stripePaymentIntentId,
       });
 
-      await db.order.update({
-        where: { id: params.id },
-        data: { status: "refunded" },
-      });
+      // Idempotent with charge.refunded webhook (claims refunded status once).
+      await applyOrderRefundSideEffects(db, order.id);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Refund failed.";
       return { error: message };
@@ -162,10 +167,17 @@ export default function AdminOrdersDetail({ loaderData, actionData }: Route.Comp
               <dt className="text-charcoal/60">Shipping</dt>
               <dd>{formatCurrency(order.shipping)}</dd>
             </div>
-            <div className="flex justify-between">
-              <dt className="text-charcoal/60">Tax</dt>
-              <dd>{formatCurrency(order.tax)}</dd>
-            </div>
+            {order.tax > 0 ? (
+              <div className="flex justify-between">
+                <dt className="text-charcoal/60">Tax</dt>
+                <dd>{formatCurrency(order.tax)}</dd>
+              </div>
+            ) : (
+              <div className="flex justify-between">
+                <dt className="text-charcoal/60">Inclusive of tax</dt>
+                <dd>—</dd>
+              </div>
+            )}
             <div className="flex justify-between border-t border-charcoal/10 pt-2 font-medium">
               <dt>Total</dt>
               <dd>{formatCurrency(order.total)}</dd>
