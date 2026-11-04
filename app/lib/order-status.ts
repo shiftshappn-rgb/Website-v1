@@ -1,4 +1,3 @@
-import { randomInt } from "node:crypto";
 import type { OrderStatus } from "@prisma/client";
 
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
@@ -46,8 +45,4 @@ export function canInitiateRefund(status: OrderStatus): boolean {
     status === "processing" ||
     status === "fulfilled"
   );
-}
-
-export function generateDeliveryCode(): string {
-  return String(randomInt(100000, 1000000));
 }

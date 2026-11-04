@@ -6,6 +6,7 @@ import { PasswordField } from "~/components/auth/PasswordField";
 import { Button } from "~/components/ui/Button";
 import { Input } from "~/components/ui/Input";
 import { db } from "~/db.server";
+import { claimGuestOrdersByEmail } from "~/lib/claim-orders.server";
 import { isGoogleOAuthConfigured, safeRedirectPath } from "~/lib/google-auth.server";
 import { buildMeta } from "~/lib/seo";
 import {
@@ -74,6 +75,8 @@ export async function action({ request }: Route.ActionArgs) {
     return data({ error: "Invalid email or password." }, { status: 401 });
   }
 
+  await claimGuestOrdersByEmail(db, customer.id, customer.email);
+
   return createCustomerSession(customer.id, redirectTo);
 }
 
@@ -125,11 +128,21 @@ export default function AuthLogin({ loaderData, actionData }: Route.ComponentPro
             inputMode="email"
             required
           />
-          <PasswordField
-            label="Password"
-            name="password"
-            autoComplete="current-password"
-          />
+          <div className="space-y-1">
+            <PasswordField
+              label="Password"
+              name="password"
+              autoComplete="current-password"
+            />
+            <div className="text-right">
+              <Link
+                to="/auth/forgot-password"
+                className="text-sm font-medium text-navy underline-offset-4 hover:underline"
+              >
+                Forgot password?
+              </Link>
+            </div>
+          </div>
           <Button type="submit" variant="terracotta" size="lg" className="w-full">
             Sign in
           </Button>

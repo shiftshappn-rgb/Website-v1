@@ -1,16 +1,22 @@
 export const HERO_IMAGES = {
-  women: "/images/hero-women.jpg?v=2",
-  men: "/images/hero-men.jpg?v=2",
+  women: [
+    "/images/hero-women-1.png",
+    "/images/hero-women-2.png",
+  ],
+  men: [
+    "/images/hero-men-1.png",
+    "/images/hero-men-2.png",
+  ],
 } as const;
 
 export const HERO_COPY = {
   women: {
-    alt: "Two nurses standing back to back in burgundy and dusty rose ShiftsHappn scrub sets",
+    alt: "Clinicians in ShiftsHappn scrubs",
     cta: "Shop women",
     href: "/shop/women",
   },
   men: {
-    alt: "Two clinicians standing back to back in navy and charcoal ShiftsHappn scrub sets",
+    alt: "Clinicians in ShiftsHappn scrubs",
     cta: "Shop men",
     href: "/shop/men",
   },

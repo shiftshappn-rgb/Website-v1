@@ -1,10 +1,14 @@
+import { randomInt } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { runWithDbTransaction } from "~/db.server";
 import { sendOrderConfirmationEmail } from "~/lib/email.server";
-import { generateDeliveryCode } from "~/lib/order-status";
 import { resolveReviewTargetsFromOrder } from "~/lib/review-targets.server";
 import { groupOrderLines } from "~/lib/order-line-groups";
 import { formatCurrency } from "~/lib/utils";
+
+function generateDeliveryCode(): string {
+  return String(randomInt(100000, 1000000));
+}
 
 type Db = PrismaClient;
 
