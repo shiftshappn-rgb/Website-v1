@@ -214,6 +214,34 @@ export async function sendGiftCardEmail({
   });
 }
 
+export async function sendPasswordResetEmail({
+  to,
+  resetUrl,
+}: {
+  to: string;
+  resetUrl: string;
+}): Promise<boolean> {
+  return sendEmail({
+    to,
+    label: "password reset",
+    subject: "Reset your shiftshappn password",
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#1C2B36">
+        <h1 style="color:#1D4E78;font-family:serif">Reset your password</h1>
+        <p>We received a request to reset the password for your shiftshappn account.</p>
+        <p style="margin:28px 0">
+          <a href="${escapeHtml(resetUrl)}"
+             style="display:inline-block;padding:12px 20px;background:#1D4E78;color:#fff;text-decoration:none;border-radius:999px;font-weight:600">
+            Choose a new password
+          </a>
+        </p>
+        <p style="font-size:13px;color:#666">This link expires in 1 hour. If you didn’t ask for a reset, you can ignore this email.</p>
+        <p style="font-size:12px;color:#999;word-break:break-all">${escapeHtml(resetUrl)}</p>
+      </div>
+    `,
+  });
+}
+
 export async function sendShippingUpdateEmail({
   to,
   orderNumber,

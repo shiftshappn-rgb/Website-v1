@@ -135,8 +135,17 @@ export default function CheckoutSuccess({ loaderData }: Route.ComponentProps) {
                 <p className="mt-3 text-sm text-charcoal/60">
                   Show this code when you receive your order so we can mark it fulfilled.
                 </p>
+                <p className="mt-3 text-sm text-charcoal/55">
+                  Save this page or check your email for this code. Create an account with{" "}
+                  <strong>{order.email}</strong> to see this order under Orders.
+                </p>
               </div>
-            ) : null}
+            ) : (
+              <p className="mb-8 text-sm text-charcoal/55">
+                Save this page or check your email for your delivery code. Create an account with{" "}
+                <strong>{order.email}</strong> to see this order under Orders.
+              </p>
+            )}
             <div className="mb-8 rounded-xl border border-charcoal/10 bg-white p-6 text-left">
               <OrderLineGroups items={order.items} className="space-y-4" />
             </div>

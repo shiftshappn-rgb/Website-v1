@@ -1,19 +1,50 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { ArrowRight } from "lucide-react";
 import { Link } from "react-router";
 import { HERO_COPY, HERO_IMAGES } from "~/lib/hero-media";
-import { ChromaKeyFilter } from "./ChromaKeyFilter";
+import { HeroEcgLine } from "./HeroEcgLine";
 import type { BlockCommonProps, HeroContent } from "./types";
 
 type Audience = "women" | "men";
 
 const AUDIENCES: Audience[] = ["women", "men"];
+const SHIFTS = "SHIFTS".split("");
+const HAPPN = "HAPPN".split("");
+
+function WordmarkLetters({
+  letters,
+  className,
+  startIndex,
+}: {
+  letters: string[];
+  className: string;
+  startIndex: number;
+}) {
+  return (
+    <span className={className} aria-hidden>
+      {letters.map((letter, index) => (
+        <span
+          key={`${letter}-${startIndex + index}`}
+          className="hero-letter"
+          style={
+            {
+              "--letter-index": startIndex + index,
+            } as CSSProperties
+          }
+        >
+          {letter}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 export function HeroBlock({
   content,
 }: BlockCommonProps & { content: HeroContent }) {
   const [audience, setAudience] = useState<Audience>("women");
   const model = HERO_COPY[audience];
+  const images = HERO_IMAGES[audience];
   const eyebrow =
     content.badge?.trim() ||
     content.subheadline?.trim() ||
@@ -29,43 +60,55 @@ export function HeroBlock({
           audience === "women" ? "bg-sky" : "bg-navy"
         }`}
       >
-        {/* Poster wordmark — brand first, behind the cut-outs */}
-        <div className="pointer-events-none absolute inset-0 z-10 flex select-none items-center justify-center px-4">
-          <h1
-            id="hero-heading"
-            className="hero-wordmark animate-enter-left translate-y-[2%] text-center text-[clamp(4.25rem,17vw,13.5rem)]"
-          >
-            <span
-              className={`block ${
-                audience === "men" ? "text-white/28" : "text-white/34"
-              }`}
+        {/* Animated sequence remounts on audience change */}
+        <div key={audience} className="pointer-events-none absolute inset-0">
+          <div className="hero-wordmark-slot absolute inset-y-0 left-0 z-25 flex w-[min(58%,36rem)] items-center px-5 sm:w-[min(52%,42rem)] sm:px-10 lg:px-14">
+            <h1
+              id="hero-heading"
+              className="hero-wordmark hero-wordmark--lift text-left text-[clamp(2.85rem,9.5vw,7.75rem)]"
             >
-              Shifts
-            </span>
-            <span className="mt-[-0.24em] block text-gold/80">Happn</span>
-          </h1>
-          <p className="sr-only">{content.headline}</p>
-        </div>
-
-        <ChromaKeyFilter />
-
-        {/* Models as cut-outs — only the active audience image is in the DOM (halves LCP bytes). */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 top-[6%] z-30 overflow-hidden sm:inset-y-0">
-          <div className="hero-model-floor" />
-          <div
-            key={audience}
-            className="hero-chroma-shell absolute inset-0 animate-enter-left"
-          >
-            <img
-              src={HERO_IMAGES[audience]}
-              alt={HERO_COPY[audience].alt}
-              width={900}
-              height={1200}
-              fetchPriority="high"
-              decoding="async"
-              className="hero-chroma-model"
-            />
+              <span className="sr-only">Shifts Happn</span>
+              <WordmarkLetters
+                letters={SHIFTS}
+                className={`hero-wordmark-line block ${
+                  audience === "men" ? "text-white/45" : "text-white/40"
+                }`}
+                startIndex={0}
+              />
+              <WordmarkLetters
+                letters={HAPPN}
+                className="hero-wordmark-line hero-wordmark-line--gold block text-gold/80"
+                startIndex={SHIFTS.length}
+              />
+            </h1>
+            <p className="sr-only">{content.headline}</p>
           </div>
+
+          <div className="hero-ecg-slot absolute inset-x-0 z-20 text-white/90">
+            <HeroEcgLine className="hero-ecg" />
+          </div>
+
+          {images.length > 0 ? (
+            <div className="hero-models-slot pointer-events-none absolute inset-y-0 right-0 z-30 w-[min(72%,46rem)] overflow-hidden sm:w-[min(62%,52rem)]">
+              <div className="hero-model-floor hero-model-floor--right" />
+              <div className="hero-model-shell hero-model-shell--right absolute inset-0">
+                {images.map((src, index) => (
+                  <img
+                    key={src}
+                    src={src}
+                    alt={index === 0 ? model.alt : ""}
+                    width={682}
+                    height={1024}
+                    fetchPriority={index === 0 ? "high" : "auto"}
+                    decoding="async"
+                    className={`hero-model ${
+                      index === 0 ? "hero-model--front" : "hero-model--back"
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {/* Soft bottom wash so CTAs stay readable */}
@@ -74,7 +117,7 @@ export function HeroBlock({
           aria-hidden
         />
 
-        {/* Foreground controls */}
+        {/* Foreground controls — unchanged */}
         <div className="absolute inset-x-0 bottom-0 z-40 flex flex-col justify-end p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-10 lg:p-14">
           <div className="flex flex-col items-start gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:gap-6">
             <div className="max-w-xl">

@@ -6,6 +6,7 @@ import { PasswordField } from "~/components/auth/PasswordField";
 import { Button } from "~/components/ui/Button";
 import { Input } from "~/components/ui/Input";
 import { db } from "~/db.server";
+import { claimGuestOrdersByEmail } from "~/lib/claim-orders.server";
 import { isGoogleOAuthConfigured, safeRedirectPath } from "~/lib/google-auth.server";
 import { buildMeta } from "~/lib/seo";
 import {
@@ -69,6 +70,8 @@ export async function action({ request }: Route.ActionArgs) {
       marketingOptIn,
     },
   });
+
+  await claimGuestOrdersByEmail(db, customer.id, customer.email);
 
   const redirectTo = safeRedirectPath(formData.get("redirectTo") as string | null);
   return createCustomerSession(customer.id, redirectTo);

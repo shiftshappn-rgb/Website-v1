@@ -46,6 +46,8 @@ export default [
     ...prefix("auth", [
       route("login", "routes/auth-login.tsx"),
       route("register", "routes/auth-register.tsx"),
+      route("forgot-password", "routes/auth-forgot-password.tsx"),
+      route("reset-password", "routes/auth-reset-password.tsx"),
       route("logout", "routes/auth-logout.tsx"),
       route("google", "routes/auth-google.tsx"),
       route("google/callback", "routes/auth-google-callback.tsx"),

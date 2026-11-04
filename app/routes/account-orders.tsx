@@ -3,6 +3,7 @@ import type { Route } from "./+types/account-orders";
 import { OrderLineGroups } from "~/components/storefront/OrderLineGroups";
 import { requireCustomer } from "~/lib/session.server";
 import { tryDb } from "~/db.server";
+import { claimGuestOrdersByEmail } from "~/lib/claim-orders.server";
 import {
   ORDER_STATUS_BADGE_CLASS,
   orderStatusLabel,
@@ -21,6 +22,10 @@ export function meta({}: Route.MetaArgs) {
 export async function loader({ request }: Route.LoaderArgs) {
   const { customer } = await requireCustomer(request);
   const db = tryDb();
+
+  if (db) {
+    await claimGuestOrdersByEmail(db, customer.id, customer.email);
+  }
 
   const orders = db
     ? await db.order.findMany({

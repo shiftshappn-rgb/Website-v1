@@ -1,5 +1,6 @@
 import { createCookieSessionStorage, redirect } from "react-router";
 import { db } from "~/db.server";
+import { claimGuestOrdersByEmail } from "~/lib/claim-orders.server";
 import { createCustomerSession } from "~/lib/session.server";
 
 const SESSION_SECRET = process.env.SESSION_SECRET ?? "dev-secret-change-me";
@@ -187,6 +188,7 @@ export async function completeGoogleOAuth(request: Request) {
   try {
     const profile = await exchangeCodeForUser(code);
     const customer = await findOrCreateGoogleCustomer(profile);
+    await claimGuestOrdersByEmail(db, customer.id, customer.email);
     return createCustomerSession(customer.id, redirectTo, clearOAuthCookie);
   } catch (error) {
     console.error("Google OAuth callback error:", error);

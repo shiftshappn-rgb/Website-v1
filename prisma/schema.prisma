@@ -318,16 +318,18 @@ model PackItem {
 }
 
 model Customer {
-  id             String   @id @default(cuid())
-  email          String   @unique
-  passwordHash   String?
-  googleId       String?  @unique
-  avatarUrl      String?
-  name           String?
-  marketingOptIn Boolean  @default(false)
-  loyaltyPoints  Int      @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                     String    @id @default(cuid())
+  email                  String    @unique
+  passwordHash           String?
+  googleId               String?   @unique
+  avatarUrl              String?
+  name                   String?
+  marketingOptIn         Boolean   @default(false)
+  loyaltyPoints          Int       @default(0)
+  passwordResetTokenHash String?
+  passwordResetExpires   DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   orders         Order[]
   addresses      Address[]

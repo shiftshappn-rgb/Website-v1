@@ -277,7 +277,43 @@ h1, h2 {
   user-select: none;
 }
 
-.hero-chroma-shell {
+.hero-wordmark--lift {
+  transform: translateY(-12%);
+}
+
+.hero-wordmark-line--gold {
+  margin-top: -0.24em;
+}
+
+.hero-letter {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(0.18em);
+  animation: heroLetterIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(0.28s + (var(--letter-index, 0) * 0.16s));
+}
+
+.hero-ecg-slot {
+  top: 70%;
+  height: clamp(3.5rem, 9vw, 6.5rem);
+  transform: translateY(-50%);
+  padding-inline: 0;
+}
+
+.hero-ecg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.hero-ecg-path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: heroEcgDraw 2.6s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.hero-model-shell {
   display: flex;
   height: 100%;
   width: 100%;
@@ -286,14 +322,37 @@ h1, h2 {
   overflow: hidden;
 }
 
-.hero-chroma-model {
+.hero-model-shell--right {
+  justify-content: center;
+  padding-right: clamp(0.5rem, 3vw, 2rem);
+  animation: heroModelsIn 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 0.4s;
+}
+
+.hero-models-slot .hero-model {
+  height: 94%;
+  max-width: min(46%, 22rem);
+}
+
+.hero-model {
   display: block;
   height: 100%;
   width: auto;
   max-width: none;
+  flex: 0 0 auto;
   object-fit: contain;
   object-position: bottom center;
-  filter: url(#shiftshappn-chroma-key);
+  filter: drop-shadow(0 28px 40px rgba(15, 23, 36, 0.28));
+}
+
+.hero-model--front {
+  z-index: 2;
+  margin-right: -6%;
+}
+
+.hero-model--back {
+  z-index: 1;
+  margin-left: -6%;
 }
 
 .hero-model-floor {
@@ -313,15 +372,117 @@ h1, h2 {
   filter: blur(10px);
 }
 
+.hero-model-floor--right {
+  left: auto;
+  right: 18%;
+  translate: 50% 0;
+  width: min(70%, 28rem);
+}
+
+@keyframes heroEcgDraw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes heroLetterIn {
+  from {
+    opacity: 0;
+    transform: translateY(0.18em);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes heroModelsIn {
+  from {
+    opacity: 0;
+    transform: translateX(2.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 @media (max-width: 639px) {
-  .hero-model-floor {
-    width: min(85%, 22rem);
-    bottom: 4%;
+  .hero-stage {
+    height: clamp(38rem, 82svh, 46rem);
+  }
+
+  .hero-wordmark-slot {
+    inset: auto;
+    /* Clear the fixed header (~56px) sitting over the stage */
+    top: 4.75rem;
+    left: 0;
+    width: 100%;
+    max-width: none;
+    height: auto;
+    align-items: flex-start;
+    padding: 0 1.15rem;
   }
 
   .hero-wordmark {
     letter-spacing: 0.02em;
-    line-height: 0.84;
+    line-height: 0.9;
+    font-size: clamp(2.15rem, 11vw, 2.75rem) !important;
+  }
+
+  .hero-wordmark--lift {
+    transform: none;
+  }
+
+  .hero-wordmark-line--gold {
+    margin-top: -0.08em;
+  }
+
+  .hero-ecg-slot {
+    top: 36%;
+    height: 2.5rem;
+  }
+
+  .hero-models-slot {
+    inset: auto;
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 58%;
+  }
+
+  .hero-models-slot .hero-model {
+    height: 100%;
+    max-width: min(44%, 9.75rem);
+  }
+
+  .hero-model-shell--right {
+    justify-content: center;
+    padding-right: 0;
+    padding-bottom: 5.5rem; /* leave room above CTA / tabs */
+  }
+
+  .hero-model-floor {
+    width: min(78%, 18rem);
+    bottom: 8%;
+  }
+
+  .hero-model-floor--right {
+    right: 50%;
+    translate: 50% 0;
+  }
+
+  .hero-model--front {
+    margin-right: -8%;
+  }
+
+  .hero-model--back {
+    margin-left: -8%;
   }
 }
 
@@ -378,11 +539,18 @@ h1, h2 {
   .animate-menu-in,
   .animate-menu-link,
   .menu-ribbon-text,
-  .is-visible .animate-icon-pulse {
+  .is-visible .animate-icon-pulse,
+  .hero-letter,
+  .hero-ecg-path,
+  .hero-model-shell--right {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
     transition: none !important;
+  }
+
+  .hero-ecg-path {
+    stroke-dashoffset: 0 !important;
   }
 
   .marquee-track {
@@ -391,15 +559,5 @@ h1, h2 {
 
   [class*="animate-border-beam"]::after {
     animation: none !important;
-  }
-
-  .hero-chroma-shell {
-    transform: none !important;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) and (max-width: 639px) {
-  .hero-chroma-shell {
-    transform: none !important;
   }
 }
