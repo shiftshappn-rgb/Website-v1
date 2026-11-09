@@ -10,6 +10,7 @@ import type {
   PackShowcaseContent,
   ProductGridContent,
 } from "~/components/homepage-blocks/types";
+import { ACCESSORIES_CATEGORY_SLUG } from "~/lib/accessories";
 import { db, isDatabaseAvailable } from "~/db.server";
 import { requireAdmin } from "~/lib/session.server";
 import type { HomepageBlockType } from "@prisma/client";
@@ -38,12 +39,19 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   await requireAdmin(request);
 
-  const [blocks, catalogProducts, catalogPacks] = await Promise.all([
+  const [blocks, sets, accessories, catalogPacks] = await Promise.all([
     db.homepageBlock.findMany({
       orderBy: { order: "asc" },
     }),
+    db.bundle.findMany({
+      select: { slug: true, name: true },
+      orderBy: { name: "asc" },
+    }),
     db.product.findMany({
-      where: { status: ProductStatus.active },
+      where: {
+        status: ProductStatus.active,
+        category: { slug: ACCESSORIES_CATEGORY_SLUG },
+      },
       select: { slug: true, name: true },
       orderBy: { name: "asc" },
     }),
@@ -53,6 +61,20 @@ export async function loader({ request }: Route.LoaderArgs) {
       orderBy: { name: "asc" },
     }),
   ]);
+
+  // Product grids sell sets + accessories only (not individual scrub tops/pants).
+  const catalogProducts = [
+    ...sets.map((set) => ({
+      slug: set.slug,
+      name: `${set.name} set`,
+      kind: "set" as const,
+    })),
+    ...accessories.map((product) => ({
+      slug: product.slug,
+      name: product.name,
+      kind: "accessory" as const,
+    })),
+  ];
 
   return {
     dbAvailable: true as const,
