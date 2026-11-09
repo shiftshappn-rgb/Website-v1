@@ -64,10 +64,9 @@ export const demoHomepageBlocks: DemoHomepageBlock[] = [
     isActive: true,
     content: {
       items: [
-        { label: "Tops", link: "/shop/women", icon: "shirt" },
-        { label: "Pants", link: "/shop/women", icon: "pants" },
-        { label: "Sets", link: "/collections/best-sellers", icon: "layers" },
-        { label: "Accessories", link: "/shop", icon: "bag" },
+        { label: "Shop", link: "/shop", icon: "layers" },
+        { label: "ShiftKnit", link: "/shiftknit", icon: "sparkles" },
+        { label: "Accessories", link: "/shop/accessories", icon: "bag" },
         { label: "Find my size", link: "/size-chart", icon: "ruler" },
       ],
     },
@@ -106,7 +105,7 @@ export const demoHomepageBlocks: DemoHomepageBlock[] = [
       headline: "Best sellers",
       layout: "carousel",
       collectionSlug: "best-sellers",
-      productSlugs: ["nova-top", "zephyr-top", "luna-pants", "eclipse-top", "aura-pants"],
+      productSlugs: ["nova", "zephyr", "luna", "eclipse", "aura"],
     },
   },
   {

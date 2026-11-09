@@ -12,6 +12,19 @@ export type PackFormCatalogProduct = {
   status: string;
 };
 
+export type PackFormCatalogSet = {
+  id: string;
+  name: string;
+  slug: string;
+  basePrice: number;
+  topName: string;
+  pantsName: string;
+};
+
+export type PackFormItem =
+  | { kind: "product"; productId: string; isPrimary: boolean }
+  | { kind: "set"; bundleId: string; isPrimary: boolean };
+
 export type PackFormValues = {
   id?: string;
   name?: string;
@@ -20,81 +33,154 @@ export type PackFormValues = {
   discountType?: "fixed" | "percent" | string;
   discountValue?: number;
   status?: string;
+  items?: PackFormItem[];
+  /** @deprecated Prefer items */
   products?: Array<{ productId: string; isPrimary: boolean }>;
 };
 
+type LineKey = string;
+
+function itemKey(item: PackFormItem): LineKey {
+  return item.kind === "set" ? `set:${item.bundleId}` : `product:${item.productId}`;
+}
+
+function parseKey(key: LineKey): PackFormItem | null {
+  if (key.startsWith("set:")) {
+    return { kind: "set", bundleId: key.slice(4), isPrimary: false };
+  }
+  if (key.startsWith("product:")) {
+    return { kind: "product", productId: key.slice(8), isPrimary: false };
+  }
+  return null;
+}
+
 export function PackForm({
   catalog,
+  setsCatalog = [],
   pack,
   submitLabel,
   cancelHref = "/admin/packs",
 }: {
   catalog: PackFormCatalogProduct[];
+  setsCatalog?: PackFormCatalogSet[];
   pack?: PackFormValues;
   submitLabel: string;
   cancelHref?: string;
 }) {
-  const initialIds = pack?.products?.map((item) => item.productId) ?? [];
-  const initialPrimary =
-    pack?.products?.find((item) => item.isPrimary)?.productId ?? initialIds[0] ?? "";
+  const initialItems: PackFormItem[] =
+    pack?.items ??
+    pack?.products?.map((item) => ({
+      kind: "product" as const,
+      productId: item.productId,
+      isPrimary: item.isPrimary,
+    })) ??
+    [];
 
-  const [selectedIds, setSelectedIds] = useState<string[]>(initialIds);
-  const [primaryId, setPrimaryId] = useState(initialPrimary);
-  const [query, setQuery] = useState("");
+  const initialKeys = initialItems.map(itemKey);
+  const initialPrimary =
+    initialItems.find((item) => item.isPrimary)
+      ? itemKey(initialItems.find((item) => item.isPrimary)!)
+      : initialKeys[0] ?? "";
+
+  const [selectedKeys, setSelectedKeys] = useState<LineKey[]>(initialKeys);
+  const [primaryKey, setPrimaryKey] = useState(initialPrimary);
+  const [productQuery, setProductQuery] = useState("");
+  const [setQuery, setSetQuery] = useState("");
   const [discountType, setDiscountType] = useState<"fixed" | "percent">(
     pack?.discountType === "percent" ? "percent" : "fixed"
   );
   const [discountValue, setDiscountValue] = useState(String(pack?.discountValue ?? 0));
 
-  const byId = useMemo(
+  const productById = useMemo(
     () => new Map(catalog.map((product) => [product.id, product])),
     [catalog]
   );
+  const setById = useMemo(
+    () => new Map(setsCatalog.map((set) => [set.id, set])),
+    [setsCatalog]
+  );
 
-  const selected = selectedIds
-    .map((id) => byId.get(id))
-    .filter((product): product is PackFormCatalogProduct => Boolean(product));
+  const selected = selectedKeys
+    .map((key) => {
+      const parsed = parseKey(key);
+      if (!parsed) return null;
+      if (parsed.kind === "set") {
+        const set = setById.get(parsed.bundleId);
+        if (!set) return null;
+        return {
+          key,
+          kind: "set" as const,
+          id: set.id,
+          name: `${set.name} set`,
+          detail: `${set.topName} + ${set.pantsName}`,
+          basePrice: set.basePrice,
+        };
+      }
+      const product = productById.get(parsed.productId);
+      if (!product) return null;
+      return {
+        key,
+        kind: "product" as const,
+        id: product.id,
+        name: product.name,
+        detail: null as string | null,
+        basePrice: product.basePrice,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row));
 
-  const available = useMemo(() => {
-    const q = query.trim().toLowerCase();
+  const availableSets = useMemo(() => {
+    const q = setQuery.trim().toLowerCase();
+    return setsCatalog.filter((set) => {
+      if (selectedKeys.includes(`set:${set.id}`)) return false;
+      if (!q) return true;
+      return (
+        set.name.toLowerCase().includes(q) ||
+        set.topName.toLowerCase().includes(q) ||
+        set.pantsName.toLowerCase().includes(q)
+      );
+    });
+  }, [selectedKeys, setQuery, setsCatalog]);
+
+  const availableProducts = useMemo(() => {
+    const q = productQuery.trim().toLowerCase();
     return catalog.filter((product) => {
-      if (selectedIds.includes(product.id)) return false;
+      if (selectedKeys.includes(`product:${product.id}`)) return false;
       if (product.status !== "active") return false;
       if (!q) return true;
       return product.name.toLowerCase().includes(q);
     });
-  }, [catalog, query, selectedIds]);
+  }, [catalog, productQuery, selectedKeys]);
 
   const discountNum = Number(discountValue);
   const safeDiscount = Number.isFinite(discountNum) && discountNum >= 0 ? discountNum : 0;
-  const sum = selected.reduce((total, product) => total + product.basePrice, 0);
+  const sum = selected.reduce((total, row) => total + row.basePrice, 0);
   const sellPrice = allocatePrices(
-    selected.map((product) => product.basePrice),
+    selected.map((row) => row.basePrice),
     discountType,
     safeDiscount
   ).total;
 
-  function addProduct(id: string) {
-    if (!id || selectedIds.includes(id)) return;
-    setSelectedIds((current) => {
-      const next = [...current, id];
-      if (!primaryId) setPrimaryId(id);
-      return next;
-    });
-    setQuery("");
-  }
-
-  function removeProduct(id: string) {
-    setSelectedIds((current) => {
-      const next = current.filter((item) => item !== id);
-      if (primaryId === id) setPrimaryId(next[0] ?? "");
+  function addKey(key: LineKey) {
+    if (!key || selectedKeys.includes(key)) return;
+    setSelectedKeys((current) => {
+      const next = [...current, key];
+      if (!primaryKey) setPrimaryKey(key);
       return next;
     });
   }
 
-  function moveProduct(id: string, direction: "up" | "down") {
-    setSelectedIds((current) => {
-      const index = current.indexOf(id);
+  function removeKey(key: LineKey) {
+    setSelectedKeys((current) => {
+      const next = current.filter((item) => item !== key);
+      if (primaryKey === key) setPrimaryKey(next[0] ?? "");
+      return next;
+    });
+  }
+
+  function moveKey(key: LineKey, direction: "up" | "down") {
+    setSelectedKeys((current) => {
+      const index = current.indexOf(key);
       if (index === -1) return current;
       const nextIndex = direction === "up" ? index - 1 : index + 1;
       if (nextIndex < 0 || nextIndex >= current.length) return current;
@@ -108,16 +194,19 @@ export function PackForm({
     <Form method="post" className="space-y-6">
       <input type="hidden" name="intent" value={pack?.id ? "update" : "create"} />
       {pack?.id && <input type="hidden" name="id" value={pack.id} />}
-      <input type="hidden" name="primaryProductId" value={primaryId} />
-      {selectedIds.map((id) => (
-        <input key={id} type="hidden" name="productIds" value={id} />
+      <input type="hidden" name="primaryItemKey" value={primaryKey} />
+      {selected.map((row) => (
+        <span key={row.key}>
+          <input type="hidden" name="itemKinds" value={row.kind} />
+          <input type="hidden" name="itemIds" value={row.id} />
+        </span>
       ))}
 
       <section className="space-y-4 rounded-xl border border-charcoal/10 bg-white p-5">
         <h2 className="font-serif text-lg text-navy">Details</h2>
         <p className="text-sm text-charcoal/60">
-          A bundle is a promotional group of products (not a scrub set). Shoppers configure each
-          product on the bundle page.
+          Bundles are promo offers. Add a scrub set first, then extras. Shoppers configure the set as
+          one unit on the bundle page.
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
           <Input label="Name" name="name" required defaultValue={pack?.name} />
@@ -143,18 +232,61 @@ export function PackForm({
 
       <section className="space-y-4 rounded-xl border border-charcoal/10 bg-white p-5">
         <div>
-          <h2 className="font-serif text-lg text-navy">Products</h2>
+          <h2 className="font-serif text-lg text-navy">Add a scrub set</h2>
           <p className="mt-1 text-sm text-charcoal/60">
-            Add at least two products. Mark one as primary — it leads the card collage and bundle
-            gallery.
+            Attaches the whole top + pants set as one unit. Create sets under Admin → Sets.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+          <Input
+            label="Search sets"
+            value={setQuery}
+            onChange={(event) => setSetQuery(event.target.value)}
+            placeholder="Filter scrub sets"
+          />
+          <div className="flex items-end">
+            <Select
+              label="Add set"
+              value=""
+              onChange={(event) => {
+                if (event.target.value) addKey(`set:${event.target.value}`);
+              }}
+              className="min-w-[12rem]"
+            >
+              <option value="">Choose…</option>
+              {availableSets.slice(0, 40).map((set) => (
+                <option key={set.id} value={set.id}>
+                  {set.name} set · {formatCurrency(set.basePrice)}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </div>
+        {setsCatalog.length === 0 && (
+          <p className="rounded-lg bg-sand/70 px-4 py-3 text-sm text-charcoal/70">
+            No scrub sets yet.{" "}
+            <Link to="/admin/sets/new" className="font-medium text-navy underline-offset-4 hover:underline">
+              Create a set
+            </Link>{" "}
+            first, then come back.
+          </p>
+        )}
+      </section>
+
+      <section className="space-y-4 rounded-xl border border-charcoal/10 bg-white p-5">
+        <div>
+          <h2 className="font-serif text-lg text-navy">Add other products</h2>
+          <p className="mt-1 text-sm text-charcoal/60">
+            Accessories or standalone pieces. Need at least two units total (set + product, or two
+            products).
           </p>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
           <Input
             label="Search products"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            value={productQuery}
+            onChange={(event) => setProductQuery(event.target.value)}
             placeholder="Type to filter active products"
             list="pack-product-suggestions"
           />
@@ -162,11 +294,13 @@ export function PackForm({
             <Select
               label="Add product"
               value=""
-              onChange={(event) => addProduct(event.target.value)}
+              onChange={(event) => {
+                if (event.target.value) addKey(`product:${event.target.value}`);
+              }}
               className="min-w-[12rem]"
             >
               <option value="">Choose…</option>
-              {available.slice(0, 40).map((product) => (
+              {availableProducts.slice(0, 40).map((product) => (
                 <option key={product.id} value={product.id}>
                   {product.name} · {formatCurrency(product.basePrice)}
                 </option>
@@ -175,22 +309,31 @@ export function PackForm({
           </div>
         </div>
         <datalist id="pack-product-suggestions">
-          {available.slice(0, 40).map((product) => (
+          {availableProducts.slice(0, 40).map((product) => (
             <option key={product.id} value={product.name} />
           ))}
         </datalist>
+      </section>
+
+      <section className="space-y-4 rounded-xl border border-charcoal/10 bg-white p-5">
+        <div>
+          <h2 className="font-serif text-lg text-navy">Bundle contents</h2>
+          <p className="mt-1 text-sm text-charcoal/60">
+            Mark one item as primary — it leads the card collage and gallery.
+          </p>
+        </div>
 
         {selected.length === 0 ? (
           <p className="rounded-lg bg-sand/70 px-4 py-3 text-sm text-charcoal/70">
-            No products yet. Add products from the catalogue above.
+            No items yet. Add a scrub set and/or products above.
           </p>
         ) : (
           <ul className="space-y-2">
-            {selected.map((product, index) => {
-              const isPrimary = product.id === primaryId;
+            {selected.map((row, index) => {
+              const isPrimary = row.key === primaryKey;
               return (
                 <li
-                  key={product.id}
+                  key={row.key}
                   className={cn(
                     "flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2.5",
                     isPrimary ? "border-navy/30 bg-navy/5" : "border-charcoal/10 bg-white"
@@ -198,47 +341,56 @@ export function PackForm({
                 >
                   <div className="min-w-0 flex-1">
                     <p className="font-medium text-charcoal">
-                      {product.name}
+                      {row.name}
+                      {row.kind === "set" && (
+                        <span className="ml-2 text-xs font-semibold uppercase tracking-wide text-charcoal/45">
+                          Set
+                        </span>
+                      )}
                       {isPrimary && (
                         <span className="ml-2 text-xs font-semibold uppercase tracking-wide text-navy">
                           Primary
                         </span>
                       )}
                     </p>
-                    <p className="text-sm text-charcoal/55">{formatCurrency(product.basePrice)}</p>
+                    <p className="text-sm text-charcoal/55">
+                      {row.detail ? `${row.detail} · ` : ""}
+                      {formatCurrency(row.basePrice)}
+                    </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     {!isPrimary && (
                       <button
                         type="button"
-                        onClick={() => setPrimaryId(product.id)}
-                        className="min-h-10 rounded-full border border-navy px-3 text-xs font-medium text-navy hover:bg-navy hover:text-white"
+                        onClick={() => setPrimaryKey(row.key)}
+                        className="min-h-11 rounded-full border border-navy px-3 text-xs font-medium text-navy hover:bg-navy hover:text-white"
                       >
                         Set primary
                       </button>
                     )}
                     <button
                       type="button"
-                      onClick={() => moveProduct(product.id, "up")}
+                      onClick={() => moveKey(row.key, "up")}
                       disabled={index === 0}
-                      className="min-h-10 min-w-10 rounded border border-charcoal/20 text-sm disabled:opacity-40"
-                      aria-label={`Move ${product.name} up`}
+                      className="min-h-11 min-w-11 rounded border border-charcoal/20 text-sm disabled:opacity-40"
+                      aria-label={`Move ${row.name} up`}
                     >
                       ↑
                     </button>
                     <button
                       type="button"
-                      onClick={() => moveProduct(product.id, "down")}
+                      onClick={() => moveKey(row.key, "down")}
                       disabled={index === selected.length - 1}
-                      className="min-h-10 min-w-10 rounded border border-charcoal/20 text-sm disabled:opacity-40"
-                      aria-label={`Move ${product.name} down`}
+                      className="min-h-11 min-w-11 rounded border border-charcoal/20 text-sm disabled:opacity-40"
+                      aria-label={`Move ${row.name} down`}
                     >
                       ↓
                     </button>
                     <button
                       type="button"
-                      onClick={() => removeProduct(product.id)}
-                      className="min-h-10 rounded-full px-3 text-xs font-medium text-red-700 hover:bg-red-50"
+                      onClick={() => removeKey(row.key)}
+                      className="min-h-11 rounded-full px-3 text-xs font-medium text-red-700 hover:bg-red-50"
+                      aria-label={`Remove ${row.name}`}
                     >
                       Remove
                     </button>
@@ -254,8 +406,8 @@ export function PackForm({
         <div>
           <h2 className="font-serif text-lg text-navy">Pricing</h2>
           <p className="mt-1 text-sm text-charcoal/60">
-            Estimated from product base prices. Shoppers see the discounted total after they pick
-            colour/size.
+            Estimated from base prices (sets use top + pants sum). Shoppers see the discounted total
+            after they pick colour/size.
           </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -301,7 +453,7 @@ export function PackForm({
       </section>
 
       <div className="flex flex-wrap gap-3">
-        <Button type="submit" disabled={selectedIds.length < 2 || !primaryId}>
+        <Button type="submit" disabled={selectedKeys.length < 2 || !primaryKey}>
           {submitLabel}
         </Button>
         <Link
@@ -311,8 +463,10 @@ export function PackForm({
           Cancel
         </Link>
       </div>
-      {selectedIds.length < 2 && (
-        <p className="text-sm text-charcoal/55">Add at least two products to save this bundle.</p>
+      {selectedKeys.length < 2 && (
+        <p className="text-sm text-charcoal/55">
+          Add at least two items (for example a scrub set plus an accessory) to save this bundle.
+        </p>
       )}
     </Form>
   );

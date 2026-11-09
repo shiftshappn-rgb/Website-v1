@@ -278,10 +278,9 @@ async function main() {
       order: 2,
       content: {
         items: [
-          { label: "Tops", link: "/shop/women", icon: "shirt" },
-          { label: "Pants", link: "/shop/women", icon: "pants" },
-          { label: "Sets", link: "/shop", icon: "layers" },
-          { label: "Accessories", link: "/shop", icon: "bag" },
+          { label: "Shop", link: "/shop", icon: "layers" },
+          { label: "ShiftKnit", link: "/shiftknit", icon: "sparkles" },
+          { label: "Accessories", link: "/shop/accessories", icon: "bag" },
           { label: "Find my size", link: "/size-chart", icon: "ruler" },
         ],
       },
@@ -524,20 +523,20 @@ async function main() {
     }
   }
 
+  const quickShopItems = [
+    { label: "Shop", link: "/shop", icon: "layers" },
+    { label: "ShiftKnit", link: "/shiftknit", icon: "sparkles" },
+    { label: "Accessories", link: "/shop/accessories", icon: "bag" },
+    { label: "Find my size", link: "/size-chart", icon: "ruler" },
+  ];
   const quickShops = await db.homepageBlock.findMany({
     where: { type: HomepageBlockType.quickShopRow },
   });
   for (const block of quickShops) {
-    const content = (block.content ?? {}) as { items?: Array<{ label?: string; link?: string; icon?: string }> };
-    if (!Array.isArray(content.items)) continue;
-    const items = content.items.map((item) =>
-      item.link === "/collections/best-sellers" || item.link === "/collections/bundles"
-        ? { ...item, link: "/shop" }
-        : item
-    );
+    const content = (block.content ?? {}) as Record<string, unknown>;
     await db.homepageBlock.update({
       where: { id: block.id },
-      data: { content: { ...content, items } },
+      data: { content: { ...content, items: quickShopItems } },
     });
   }
 

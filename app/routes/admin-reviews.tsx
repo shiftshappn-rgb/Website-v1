@@ -87,6 +87,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       lengthPurchased: r.lengthPurchased,
       weight: r.weight,
       occupation: r.occupation,
+      hospital: r.hospital,
       fit: r.fit,
       verifiedPurchase: r.verifiedPurchase,
       status: r.status,
@@ -279,6 +280,7 @@ export default function AdminReviews({ loaderData, actionData }: Route.Component
                 review.lengthPurchased ||
                 review.weight ||
                 review.occupation ||
+                review.hospital ||
                 review.fit) && (
                 <dl className="grid gap-1 rounded-lg bg-sand/60 px-3 py-2 text-xs text-charcoal/70 sm:grid-cols-2">
                   {review.sizePurchased && (
@@ -311,9 +313,17 @@ export default function AdminReviews({ loaderData, actionData }: Route.Component
                   )}
                   {review.occupation && (
                     <div>
-                      <dt className="inline text-charcoal/45">Occupation: </dt>
+                      <dt className="inline text-charcoal/45">Role: </dt>
                       <dd className="inline font-medium text-charcoal">
                         {review.occupation}
+                      </dd>
+                    </div>
+                  )}
+                  {review.hospital && (
+                    <div>
+                      <dt className="inline text-charcoal/45">Hospital: </dt>
+                      <dd className="inline font-medium text-charcoal">
+                        {review.hospital}
                       </dd>
                     </div>
                   )}

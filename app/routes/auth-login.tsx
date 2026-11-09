@@ -6,6 +6,10 @@ import { PasswordField } from "~/components/auth/PasswordField";
 import { Button } from "~/components/ui/Button";
 import { Input } from "~/components/ui/Input";
 import { db } from "~/db.server";
+import {
+  hasFieldErrors,
+  validateLoginFields,
+} from "~/lib/auth-validation";
 import { claimGuestOrdersByEmail } from "~/lib/claim-orders.server";
 import { isGoogleOAuthConfigured, safeRedirectPath } from "~/lib/google-auth.server";
 import { buildMeta } from "~/lib/seo";
@@ -53,8 +57,12 @@ export async function action({ request }: Route.ActionArgs) {
   const password = formData.get("password") as string;
   const redirectTo = (formData.get("redirectTo") as string) || "/account";
 
-  if (!email || !password) {
-    return data({ error: "Email and password are required." }, { status: 400 });
+  const fieldErrors = validateLoginFields({ email, password });
+  if (hasFieldErrors(fieldErrors)) {
+    return data(
+      { error: null, fieldErrors, values: { email } },
+      { status: 400 }
+    );
   }
 
   const customer = await db.customer.findUnique({ where: { email } });
@@ -63,16 +71,32 @@ export async function action({ request }: Route.ActionArgs) {
       return data(
         {
           error: "This account uses Google sign-in. Please continue with Google below.",
+          fieldErrors: null,
+          values: { email },
         },
         { status: 401 }
       );
     }
-    return data({ error: "Invalid email or password." }, { status: 401 });
+    return data(
+      {
+        error: "Invalid email or password.",
+        fieldErrors: null,
+        values: { email },
+      },
+      { status: 401 }
+    );
   }
 
   const valid = await verifyPassword(password, customer.passwordHash);
   if (!valid) {
-    return data({ error: "Invalid email or password." }, { status: 401 });
+    return data(
+      {
+        error: "Invalid email or password.",
+        fieldErrors: null,
+        values: { email },
+      },
+      { status: 401 }
+    );
   }
 
   await claimGuestOrdersByEmail(db, customer.id, customer.email);
@@ -86,7 +110,9 @@ export default function AuthLogin({ loaderData, actionData }: Route.ComponentPro
     redirectTo === "/account"
       ? "/auth/register"
       : `/auth/register?redirectTo=${encodeURIComponent(redirectTo)}`;
-  const error = actionData?.error ?? loaderData?.error;
+  const error = actionData ? actionData.error : loaderData?.error;
+  const fieldErrors = actionData?.fieldErrors ?? null;
+  const emailValue = actionData?.values?.email ?? "";
 
   return (
     <AuthShell
@@ -127,12 +153,15 @@ export default function AuthLogin({ loaderData, actionData }: Route.ComponentPro
             autoComplete="email"
             inputMode="email"
             required
+            defaultValue={emailValue}
+            error={fieldErrors?.email}
           />
           <div className="space-y-1">
             <PasswordField
               label="Password"
               name="password"
               autoComplete="current-password"
+              error={fieldErrors?.password}
             />
             <div className="text-right">
               <Link

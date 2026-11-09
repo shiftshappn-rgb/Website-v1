@@ -32,6 +32,27 @@ export function giftCardLineId(
   return `gift-card-${amount}-${recipient}-${note}`;
 }
 
+/** Prefer the purchaser's account name; fall back to their email. */
+export async function resolveGiftCardFromLabel(
+  db: Db,
+  purchaserEmail?: string | null,
+  purchaserName?: string | null
+): Promise<string | null> {
+  const name = purchaserName?.trim();
+  if (name) return name;
+
+  const email = purchaserEmail?.trim().toLowerCase();
+  if (!email) return null;
+
+  const customer = await db.customer.findUnique({
+    where: { email },
+    select: { name: true, email: true },
+  });
+  const customerName = customer?.name?.trim();
+  if (customerName) return customerName;
+  return customer?.email ?? email;
+}
+
 export async function loadGiftCardShopSettings(
   db: Db | null
 ): Promise<GiftCardShopSettings> {

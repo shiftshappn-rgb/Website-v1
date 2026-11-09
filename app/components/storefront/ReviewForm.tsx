@@ -115,10 +115,16 @@ export function ReviewForm({
         <Input label="Height" name="height" maxLength={40} placeholder="170–175 cm" />
         <Input label="Weight" name="weight" maxLength={40} placeholder="145 lb" />
         <Input
-          label="Occupation"
+          label="Role (optional)"
           name="occupation"
           maxLength={80}
-          placeholder="RN, Physician…"
+          placeholder="RN, Physician, Paramedic…"
+        />
+        <Input
+          label="Hospital (optional)"
+          name="hospital"
+          maxLength={120}
+          placeholder="QEII, IWK…"
         />
         <label className="block space-y-1.5 text-sm">
           <span className="font-medium text-charcoal">Fit</span>

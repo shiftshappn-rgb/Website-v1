@@ -44,7 +44,7 @@ type PackProductPiece = {
   variants: Array<{ colorName: string; colorHex: string; images: unknown }>;
 };
 
-type PackItemRow = {
+export type PackItemRow = {
   isPrimary: boolean;
   sortOrder: number;
   product: {
@@ -55,6 +55,7 @@ type PackItemRow = {
     variants: Array<{ colorName: string; colorHex: string; images: unknown }>;
   } | null;
   bundle: {
+    id?: string;
     name: string;
     products: Array<{
       role: string;
@@ -70,52 +71,143 @@ type PackItemRow = {
   } | null;
 };
 
-/** Prefer product PackItems; fall back to expanding a legacy scrub set. */
-export function resolveStorefrontPackProducts(items: PackItemRow[]): PackProductPiece[] {
-  const fromProducts = items
-    .filter((item) => item.product && item.product.status === "active")
-    .map((item) => ({
-      id: item.product!.id,
-      name: item.product!.name,
-      basePrice: Number(item.product!.basePrice),
-      isPrimary: item.isPrimary,
-      variants: item.product!.variants,
-      sortOrder: item.sortOrder,
-    }))
-    .sort((a, b) => {
-      if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
-      return a.sortOrder - b.sortOrder;
-    });
+export type StorefrontPackProductUnit = {
+  kind: "product";
+  id: string;
+  name: string;
+  basePrice: number;
+  isPrimary: boolean;
+  variants: Array<{ colorName: string; colorHex: string; images: unknown }>;
+};
 
-  if (fromProducts.length > 0) {
-    const hasPrimary = fromProducts.some((item) => item.isPrimary);
-    return fromProducts.map((item, index) => ({
-      id: item.id,
-      name: item.name,
-      basePrice: item.basePrice,
-      isPrimary: hasPrimary ? item.isPrimary : index === 0,
-      variants: item.variants,
-    }));
-  }
+export type StorefrontPackSetUnit = {
+  kind: "set";
+  bundleId: string;
+  name: string;
+  isPrimary: boolean;
+  top: {
+    id: string;
+    name: string;
+    basePrice: number;
+    variants: Array<{ colorName: string; colorHex: string; images: unknown }>;
+  };
+  pants: {
+    id: string;
+    name: string;
+    basePrice: number;
+    variants: Array<{ colorName: string; colorHex: string; images: unknown }>;
+  };
+};
 
-  const setItem = items.find((item) => item.bundle);
-  if (!setItem?.bundle) return [];
+export type StorefrontPackUnit = StorefrontPackProductUnit | StorefrontPackSetUnit;
 
-  const pieces = [...setItem.bundle.products].sort((a, b) => {
+function sortSetPieces<T extends { role: string; sortOrder: number }>(pieces: T[]) {
+  return [...pieces].sort((a, b) => {
     if (a.role === "top" && b.role !== "top") return -1;
     if (b.role === "top" && a.role !== "top") return 1;
     return a.sortOrder - b.sortOrder;
   });
+}
 
-  return pieces
-    .filter((piece) => piece.product.status !== "archived")
-    .map((piece, index) => ({
-      id: piece.product.id,
-      name: piece.product.name,
-      basePrice: Number(piece.product.basePrice),
-      isPrimary: index === 0,
-      variants: piece.product.variants,
-    }));
+/** Typed units for PDP: sets stay as one configure block. */
+export function resolveStorefrontPackUnits(items: PackItemRow[]): StorefrontPackUnit[] {
+  const ordered = [...items].sort((a, b) => a.sortOrder - b.sortOrder);
+  const units: Array<StorefrontPackUnit & { sortOrder: number }> = [];
+
+  for (const item of ordered) {
+    if (item.product && item.product.status === "active") {
+      units.push({
+        kind: "product",
+        id: item.product.id,
+        name: item.product.name,
+        basePrice: Number(item.product.basePrice),
+        isPrimary: item.isPrimary,
+        variants: item.product.variants,
+        sortOrder: item.sortOrder,
+      });
+      continue;
+    }
+
+    if (!item.bundle) continue;
+    const pieces = sortSetPieces(item.bundle.products).filter(
+      (piece) => piece.product.status !== "archived"
+    );
+    const top = pieces.find((piece) => piece.role === "top")?.product;
+    const pants = pieces.find((piece) => piece.role === "pants")?.product;
+    if (!top || !pants) continue;
+
+    units.push({
+      kind: "set",
+      bundleId: item.bundle.id ?? item.bundle.name,
+      name: item.bundle.name,
+      isPrimary: item.isPrimary,
+      top: {
+        id: top.id,
+        name: top.name,
+        basePrice: Number(top.basePrice),
+        variants: top.variants,
+      },
+      pants: {
+        id: pants.id,
+        name: pants.name,
+        basePrice: Number(pants.basePrice),
+        variants: pants.variants,
+      },
+      sortOrder: item.sortOrder,
+    });
+  }
+
+  if (units.length === 0) return [];
+
+  const hasPrimary = units.some((unit) => unit.isPrimary);
+  return units
+    .sort((a, b) => {
+      if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+      return a.sortOrder - b.sortOrder;
+    })
+    .map((unit, index) => {
+      const { sortOrder: _sortOrder, ...rest } = unit;
+      return {
+        ...rest,
+        isPrimary: hasPrimary ? unit.isPrimary : index === 0,
+      };
+    });
+}
+
+/** Expand all pack items to product pieces (sets → top + pants) for cards/pricing. */
+export function resolveStorefrontPackProducts(items: PackItemRow[]): PackProductPiece[] {
+  const units = resolveStorefrontPackUnits(items);
+  const pieces: PackProductPiece[] = [];
+
+  for (const unit of units) {
+    if (unit.kind === "product") {
+      pieces.push({
+        id: unit.id,
+        name: unit.name,
+        basePrice: unit.basePrice,
+        isPrimary: unit.isPrimary,
+        variants: unit.variants,
+      });
+      continue;
+    }
+
+    pieces.push({
+      id: unit.top.id,
+      name: unit.top.name,
+      basePrice: unit.top.basePrice,
+      isPrimary: unit.isPrimary,
+      variants: unit.top.variants,
+    });
+    pieces.push({
+      id: unit.pants.id,
+      name: unit.pants.name,
+      basePrice: unit.pants.basePrice,
+      isPrimary: false,
+      variants: unit.pants.variants,
+    });
+  }
+
+  return pieces;
 }
 
 const packItemsInclude = {

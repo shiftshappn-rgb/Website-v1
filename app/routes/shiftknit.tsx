@@ -13,6 +13,7 @@ import {
 import { Link } from "react-router";
 import { ProductCard } from "~/components/storefront/ProductCard";
 import { loadShopListing } from "~/lib/catalog.server";
+import { cloudinaryImageUrl, cloudinarySrcSet } from "~/lib/cloudinary";
 import { buildMeta } from "~/lib/seo";
 import {
   AT_A_GLANCE,
@@ -21,6 +22,7 @@ import {
   MOMENTS,
   SHIFTKNIT_COMPOSITION,
   SHIFTKNIT_FAQS,
+  SHIFTKNIT_HERO,
 } from "~/lib/shiftknit-content";
 import type { ProductCardData } from "~/lib/serialize";
 
@@ -42,22 +44,51 @@ export async function loader({}: Route.LoaderArgs) {
   return {
     womenProducts: women.products,
     menProducts: men.products,
-    cloudName: women.cloudName ?? men.cloudName,
+    cloudName:
+      women.cloudName ?? men.cloudName ?? process.env.CLOUDINARY_CLOUD_NAME ?? null,
   };
 }
 
-function PhotoPlaceholder({
-  label,
+function ShiftKnitPhoto({
+  publicId,
+  alt,
+  cloudName,
+  width,
+  widths,
+  sizes,
   className = "",
+  imgClassName = "h-full w-full object-cover",
+  priority = false,
 }: {
-  label: string;
+  publicId: string;
+  alt: string;
+  cloudName: string | null;
+  width: number;
+  widths: number[];
+  sizes: string;
   className?: string;
+  imgClassName?: string;
+  priority?: boolean;
 }) {
+  const src = cloudinaryImageUrl(publicId, cloudName, width);
+  const srcSet = cloudinarySrcSet(publicId, cloudName, widths);
+
   return (
-    <div
-      className={`flex items-center justify-center rounded-2xl border border-dashed border-charcoal/20 bg-stone/60 px-4 text-center text-xs leading-relaxed text-charcoal/45 ${className}`}
-    >
-      {label}
+    <div className={`overflow-hidden rounded-2xl bg-stone ${className}`}>
+      {src ? (
+        <img
+          src={src}
+          srcSet={srcSet ?? undefined}
+          sizes={srcSet ? sizes : undefined}
+          alt={alt}
+          className={imgClassName}
+          loading={priority ? "eager" : "lazy"}
+          fetchPriority={priority ? "high" : "auto"}
+          decoding="async"
+        />
+      ) : (
+        <div className={`bg-stone ${imgClassName}`} aria-hidden />
+      )}
     </div>
   );
 }
@@ -188,9 +219,16 @@ export default function ShiftKnitPage({ loaderData }: Route.ComponentProps) {
               </Link>
             </div>
           </div>
-          <PhotoPlaceholder
-            label="PHOTO · Two healthcare workers in ShiftsHappn scrubs, one women's set and one men's, on a plain light background."
-            className="min-h-[22rem] lg:min-h-[28rem]"
+          <ShiftKnitPhoto
+            publicId={SHIFTKNIT_HERO.publicId}
+            alt={SHIFTKNIT_HERO.alt}
+            cloudName={cloudName}
+            width={1200}
+            widths={[640, 960, 1200, 1600]}
+            sizes="(max-width: 1024px) 100vw, 560px"
+            className="min-h-[22rem] bg-charcoal lg:min-h-[28rem]"
+            imgClassName="h-full min-h-[22rem] w-full object-cover object-center lg:min-h-[28rem]"
+            priority
           />
         </div>
       </section>
@@ -208,8 +246,13 @@ export default function ShiftKnitPage({ loaderData }: Route.ComponentProps) {
           <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {MOMENTS.map((moment) => (
               <article key={moment.time} className="flex flex-col">
-                <PhotoPlaceholder
-                  label={moment.photo}
+                <ShiftKnitPhoto
+                  publicId={moment.publicId}
+                  alt={moment.imageAlt}
+                  cloudName={cloudName}
+                  width={640}
+                  widths={[320, 480, 640, 800]}
+                  sizes="(max-width: 640px) 70vw, (max-width: 1024px) 45vw, 280px"
                   className="aspect-[4/5] w-full"
                 />
                 <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-sky">
@@ -238,9 +281,15 @@ export default function ShiftKnitPage({ loaderData }: Route.ComponentProps) {
                 key={fibre.label}
                 className="grid overflow-hidden rounded-2xl bg-white shadow-[0_1px_0_rgba(17,26,34,0.06)] sm:grid-cols-2"
               >
-                <PhotoPlaceholder
-                  label={fibre.photo}
-                  className="min-h-[12rem] rounded-none border-0 sm:min-h-[14rem]"
+                <ShiftKnitPhoto
+                  publicId={fibre.publicId}
+                  alt={fibre.imageAlt}
+                  cloudName={cloudName}
+                  width={960}
+                  widths={[480, 720, 960, 1280]}
+                  sizes="(max-width: 640px) 100vw, 50vw"
+                  className="aspect-[16/7] min-h-[12rem] rounded-none sm:aspect-auto sm:min-h-[14rem] sm:h-full"
+                  imgClassName="h-full w-full object-cover"
                 />
                 <div className="flex flex-col justify-center p-6 sm:p-8">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-charcoal/45">
@@ -379,9 +428,13 @@ export default function ShiftKnitPage({ loaderData }: Route.ComponentProps) {
           <ProductRow
             title="Women's"
             products={womenProducts}
-            cloudName={cloudName}
+            cloudName={cloudName ?? undefined}
           />
-          <ProductRow title="Men's" products={menProducts} cloudName={cloudName} />
+          <ProductRow
+            title="Men's"
+            products={menProducts}
+            cloudName={cloudName ?? undefined}
+          />
         </div>
       </section>
 
