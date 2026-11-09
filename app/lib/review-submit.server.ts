@@ -54,6 +54,7 @@ export async function submitProductReview({
     lengthPurchased: parsed.data.lengthPurchased,
     weight: parsed.data.weight,
     occupation: parsed.data.occupation,
+    hospital: parsed.data.hospital,
     fit: parsed.data.fit,
     verifiedPurchase,
     status: "pending" as const,

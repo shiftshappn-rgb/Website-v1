@@ -27,7 +27,8 @@ export function ReviewCard({
       ? { label: "Length Purchased", value: review.lengthPurchased }
       : null,
     review.weight ? { label: "Weight", value: review.weight } : null,
-    review.occupation ? { label: "Occupation", value: review.occupation } : null,
+    review.occupation ? { label: "Role", value: review.occupation } : null,
+    review.hospital ? { label: "Hospital", value: review.hospital } : null,
     review.fit ? { label: "Fit", value: review.fit } : null,
   ].filter((row): row is { label: string; value: string } => Boolean(row));
 

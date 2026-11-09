@@ -1,30 +1,41 @@
 export const SHIFTKNIT_COMPOSITION =
   "72% polyester · 21% rayon · 7% spandex" as const;
 
+/** Cloudinary public IDs under shiftshappn/shiftknit/ */
+export const SHIFTKNIT_HERO = {
+  publicId: "shiftshappn/shiftknit/hero",
+  alt: "Three healthcare workers in pink, navy, and lavender SHIFTKNIT scrubs",
+} as const;
+
 export const MOMENTS = [
   {
     time: "07:00",
     title: "Handover",
     body: "Soft against your skin from the first minute of your shift.",
-    photo: "PHOTO · Start of shift, coffee in hand.",
+    publicId: "shiftshappn/shiftknit/moment-handover",
+    imageAlt:
+      "Nurse in forest green SHIFTKNIT scrubs with a ShiftsHappn tote and tumbler at the start of shift",
   },
   {
     time: "09:30",
     title: "The bed bath",
     body: "Crouch down to bedside height. The stretch goes with you.",
-    photo: "PHOTO · Crouching at bedside height.",
+    publicId: "shiftshappn/shiftknit/moment-bed-bath",
+    imageAlt: "SHIFTKNIT fabric stretching as hands pull the hem of a blush scrub top",
   },
   {
     time: "13:00",
     title: "The top shelf",
     body: "Reach the back of the supply room without fighting your scrubs.",
-    photo: "PHOTO · Reaching the top supply shelf.",
+    publicId: "shiftshappn/shiftknit/moment-top-shelf",
+    imageAlt: "Healthcare worker in ceil blue scrubs standing in a hospital supply room",
   },
   {
     time: "19:00",
     title: "The walk to your car",
     body: "Built for the last hour of your shift, not just the first.",
-    photo: "PHOTO · Walking to the car at dusk.",
+    publicId: "shiftshappn/shiftknit/moment-walk-to-car",
+    imageAlt: "Side view of lavender SHIFTKNIT scrub pants and sneakers after a long shift",
   },
 ] as const;
 
@@ -34,21 +45,24 @@ export const FIBRE_FEATURES = [
     headline: "Goodbye, baggy by lunch.",
     body: "Polyester is a strong fibre that helps your scrubs hold their shape through the shift.",
     highlight: "72% polyester",
-    photo: "PHOTO · Close-up of a crisp knee and hem",
+    publicId: "shiftshappn/shiftknit/fibre-shape",
+    imageAlt: "Burgundy SHIFTKNIT scrub waistband and pockets that hold their shape",
   },
   {
     label: "SOFT · 21% RAYON",
     headline: "Goodbye, scratchy.",
     body: "Rayon is made from plant cellulose. It gives SHIFTKNIT™ its soft feel and natural drape.",
     highlight: "21% rayon",
-    photo: "PHOTO · A hand running over the fabric",
+    publicId: "shiftshappn/shiftknit/fibre-soft",
+    imageAlt: "Close-up of soft black SHIFTKNIT fabric with natural drape",
   },
   {
     label: "STRETCH · 7% SPANDEX",
     headline: "Goodbye, pulling and tugging.",
     body: "Spandex gives when you bend, crouch and reach, then settles back into shape.",
     highlight: "7% spandex",
-    photo: "PHOTO · Reaching overhead, top stays put",
+    publicId: "shiftshappn/shiftknit/fibre-stretch",
+    imageAlt: "Hand stretching the hem of a lime SHIFTKNIT top to show fabric give",
   },
 ] as const;
 

@@ -9,13 +9,16 @@ function isAbsoluteOrLocal(publicId: string) {
 export function cloudinaryImageUrl(
   publicId: string,
   cloudName: string | null | undefined,
-  width?: number
+  width?: number,
+  options?: { quality?: "auto" | "auto:eco" | "auto:good" }
 ): string | null {
   if (!publicId) return null;
   if (isAbsoluteOrLocal(publicId)) return publicId;
   if (!cloudName) return null;
 
-  const transforms = ["f_auto", "q_auto", width ? `w_${width}` : null]
+  const quality = options?.quality ?? "auto";
+  // f_auto serves WebP/AVIF when the browser supports it
+  const transforms = ["f_auto", `q_${quality}`, "c_limit", width ? `w_${width}` : null]
     .filter(Boolean)
     .join(",");
 

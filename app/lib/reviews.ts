@@ -19,6 +19,7 @@ export type SerializedReview = {
   lengthPurchased: string | null;
   weight: string | null;
   occupation: string | null;
+  hospital: string | null;
   fit: string | null;
   createdAt: string;
 };
@@ -80,6 +81,7 @@ export function serializeReview(review: {
   lengthPurchased?: string | null;
   weight?: string | null;
   occupation?: string | null;
+  hospital?: string | null;
   fit?: string | null;
   createdAt: Date;
 }): SerializedReview {
@@ -96,6 +98,7 @@ export function serializeReview(review: {
     lengthPurchased: review.lengthPurchased ?? null,
     weight: review.weight ?? null,
     occupation: review.occupation ?? null,
+    hospital: review.hospital ?? null,
     fit: review.fit ?? null,
     createdAt: review.createdAt.toISOString(),
   };
@@ -115,6 +118,7 @@ export type ReviewCreateData = {
   lengthPurchased: string | null;
   weight: string | null;
   occupation: string | null;
+  hospital: string | null;
   fit: string | null;
 };
 
@@ -154,6 +158,7 @@ export function parseReviewSubmission(formData: FormData): ReviewSubmission {
       lengthPurchased: optionalTrim(formData.get("lengthPurchased"), 40),
       weight: optionalTrim(formData.get("weight"), 40),
       occupation: optionalTrim(formData.get("occupation"), 80),
+      hospital: optionalTrim(formData.get("hospital"), 120),
       fit: optionalTrim(formData.get("fit"), 40),
     },
   };

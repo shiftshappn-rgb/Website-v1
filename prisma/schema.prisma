@@ -414,6 +414,7 @@ model Review {
   lengthPurchased  String?
   weight           String?
   occupation       String?
+  hospital         String?
   fit              String?
   createdAt        DateTime     @default(now())
 
