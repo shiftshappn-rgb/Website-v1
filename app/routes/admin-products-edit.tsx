@@ -20,6 +20,10 @@ import {
   ACCESSORY_DEFAULT_SIZE,
   isAccessoriesCategory,
 } from "~/lib/accessories";
+import {
+  isAssignableProductCategory,
+  productCategorySelectOptions,
+} from "~/lib/categories";
 import { listCatalogColors } from "~/lib/catalog-colors.server";
 import { cloudinaryImageUrl } from "~/lib/cloudinary";
 import { buildVariantSku, CATALOG_SIZES } from "~/lib/product-catalog";
@@ -135,7 +139,13 @@ export async function loader({ request, params }: Route.LoaderArgs) {
       }),
       db.category.findMany({
         orderBy: { name: "asc" },
-        select: { id: true, name: true, slug: true, parentCategoryId: true },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          parentCategoryId: true,
+          parent: { select: { id: true, name: true, slug: true } },
+        },
       }),
       db.fabricType.findMany({
         orderBy: { name: "asc" },
@@ -151,6 +161,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     return {
       dbAvailable: true as const,
       cloudName: process.env.CLOUDINARY_CLOUD_NAME ?? null,
+      categoryOptions: productCategorySelectOptions(categories, product.categoryId),
       product: {
         id: product.id,
         name: product.name,
@@ -727,6 +738,19 @@ async function runProductEditAction(
     return { error: "A product with this slug already exists." };
   }
 
+  if (categoryId) {
+    const category = await db.category.findUnique({
+      where: { id: categoryId },
+      select: { slug: true, parentCategoryId: true },
+    });
+    if (!category || !isAssignableProductCategory(category)) {
+      return {
+        error:
+          "Choose a piece category under Women or Men (Scrub Tops / Scrub Pants), or Accessories.",
+      };
+    }
+  }
+
   try {
     await db.product.update({
       where: { id: productId },
@@ -764,7 +788,8 @@ export default function AdminProductsEdit({ loaderData, actionData }: Route.Comp
     return <DatabaseUnavailable />;
   }
 
-  const { product, categories, fabricTypes, cloudName, catalogColors } = loaderData;
+  const { product, categories, categoryOptions, fabricTypes, cloudName, catalogColors } =
+    loaderData;
   const navigation = useNavigation();
   const savingProduct =
     navigation.state !== "idle" && navigation.formData?.get("intent") === "update-product";
@@ -880,14 +905,20 @@ export default function AdminProductsEdit({ loaderData, actionData }: Route.Comp
             />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Select label="Category" name="categoryId" defaultValue={product.categoryId ?? ""}>
-              <option value="">None</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </Select>
+            <div className="space-y-1">
+              <Select label="Category" name="categoryId" defaultValue={product.categoryId ?? ""}>
+                <option value="">None</option>
+                {categoryOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+              <p className="text-xs text-charcoal/55">
+                Piece category under Women or Men (Tops / Pants). Sets need those piece
+                categories.
+              </p>
+            </div>
             <Select
               label="Fabric Type"
               name="fabricTypeId"

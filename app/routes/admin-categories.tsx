@@ -5,6 +5,7 @@ import { Input, Select } from "~/components/ui/Input";
 import { Card } from "~/components/ui/Badge";
 import { DatabaseUnavailable } from "~/components/admin/DatabaseUnavailable";
 import { db, isDatabaseAvailable } from "~/db.server";
+import { categoryPathLabel } from "~/lib/categories";
 import { slugify } from "~/lib/utils";
 import { requireAdmin } from "~/lib/session.server";
 
@@ -15,6 +16,12 @@ type CategoryNode = {
   parentCategoryId: string | null;
   sortOrder: number;
   children: CategoryNode[];
+};
+
+type CategoryOption = {
+  id: string;
+  name: string;
+  label: string;
 };
 
 function buildCategoryTree(
@@ -52,7 +59,7 @@ function CategoryRow({
 }: {
   category: CategoryNode;
   depth: number;
-  allCategories: { id: string; name: string }[];
+  allCategories: CategoryOption[];
 }) {
   return (
     <>
@@ -77,7 +84,7 @@ function CategoryRow({
                   .filter((c) => c.id !== category.id)
                   .map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name}
+                      {c.label}
                     </option>
                   ))}
               </Select>
@@ -118,12 +125,17 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const categories = await db.category.findMany({
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    include: { parent: { select: { name: true, slug: true } } },
   });
 
   return {
     dbAvailable: true as const,
     tree: buildCategoryTree(categories),
-    categories: categories.map((c) => ({ id: c.id, name: c.name })),
+    categories: categories.map((c) => ({
+      id: c.id,
+      name: c.name,
+      label: categoryPathLabel(c),
+    })),
   };
 }
 
@@ -199,7 +211,7 @@ export default function AdminCategories({ loaderData, actionData }: Route.Compon
             <option value="">None (root)</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.name}
+                {c.label}
               </option>
             ))}
           </Select>

@@ -10,6 +10,10 @@ import {
   ACCESSORY_DEFAULT_SIZE,
   isAccessoriesCategory,
 } from "~/lib/accessories";
+import {
+  isAssignableProductCategory,
+  productCategorySelectOptions,
+} from "~/lib/categories";
 import { buildVariantSku } from "~/lib/product-catalog";
 import { slugify } from "~/lib/utils";
 import { requireAdmin } from "~/lib/session.server";
@@ -23,13 +27,22 @@ export async function loader({ request }: Route.LoaderArgs) {
   await requireAdmin(request);
 
   const [categories, fabricTypes] = await Promise.all([
-    db.category.findMany({ orderBy: { name: "asc" } }),
+    db.category.findMany({
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        parentCategoryId: true,
+        parent: { select: { id: true, name: true, slug: true } },
+      },
+    }),
     db.fabricType.findMany({ orderBy: { name: "asc" } }),
   ]);
 
   return {
     dbAvailable: true as const,
-    categories,
+    categoryOptions: productCategorySelectOptions(categories),
     fabricTypes,
   };
 }
@@ -76,9 +89,16 @@ export async function action({ request }: Route.ActionArgs) {
   const category = categoryId
     ? await db.category.findUnique({
         where: { id: categoryId },
-        select: { slug: true },
+        select: { slug: true, parentCategoryId: true },
       })
     : null;
+
+  if (categoryId && (!category || !isAssignableProductCategory(category))) {
+    return {
+      error:
+        "Choose a piece category under Women or Men (Scrub Tops / Scrub Pants), or Accessories.",
+    };
+  }
 
   const product = await db.product.create({
     data: {
@@ -127,7 +147,7 @@ export default function AdminProductsNew({ loaderData, actionData }: Route.Compo
     return <DatabaseUnavailable />;
   }
 
-  const { categories, fabricTypes } = loaderData;
+  const { categoryOptions, fabricTypes } = loaderData;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -168,14 +188,20 @@ export default function AdminProductsNew({ loaderData, actionData }: Route.Compo
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Select label="Category" name="categoryId">
-            <option value="">None</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
+          <div className="space-y-1">
+            <Select label="Category" name="categoryId">
+              <option value="">None</option>
+              {categoryOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+            <p className="text-xs text-charcoal/55">
+              Piece category under Women or Men (Tops / Pants). Sets need those piece
+              categories.
+            </p>
+          </div>
           <Select label="Fabric Type" name="fabricTypeId">
             <option value="">None</option>
             {fabricTypes.map((f) => (

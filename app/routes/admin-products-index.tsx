@@ -1,21 +1,12 @@
+import type { ProductStatus } from "@prisma/client";
 import type { Route } from "./+types/admin-products-index";
 import { LinkButton } from "~/components/ui/Button";
 import { DatabaseUnavailable } from "~/components/admin/DatabaseUnavailable";
 import { ProductsDataTable } from "~/components/admin/ProductsDataTable";
 import { db, isDatabaseAvailable } from "~/db.server";
+import { audienceFromCategory, categoryPathLabel } from "~/lib/categories";
 import { parseVariantImages } from "~/lib/utils";
 import { requireAdmin } from "~/lib/session.server";
-import type { ProductStatus } from "@prisma/client";
-
-function audienceLabel(category: {
-  slug: string;
-  parent: { slug: string } | null;
-} | null): "Women" | "Men" | null {
-  const slug = category?.parent?.slug ?? category?.slug;
-  if (slug === "women") return "Women";
-  if (slug === "men") return "Men";
-  return null;
-}
 
 export async function loader({ request }: Route.LoaderArgs) {
   if (!isDatabaseAvailable()) {
@@ -26,7 +17,13 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const products = await db.product.findMany({
     include: {
-      category: { select: { name: true, slug: true, parent: { select: { slug: true } } } },
+      category: {
+        select: {
+          name: true,
+          slug: true,
+          parent: { select: { name: true, slug: true } },
+        },
+      },
       variants: { select: { images: true }, orderBy: { createdAt: "asc" } },
       _count: { select: { variants: true } },
     },
@@ -53,8 +50,8 @@ export async function loader({ request }: Route.LoaderArgs) {
         slug: p.slug,
         status: p.status,
         basePrice: Number(p.basePrice),
-        categoryName: p.category?.name ?? null,
-        audience: audienceLabel(p.category),
+        categoryName: p.category ? categoryPathLabel(p.category) : null,
+        audience: audienceFromCategory(p.category),
         variantCount: p._count.variants,
         thumbnailPublicId,
         thumbnailAlt,

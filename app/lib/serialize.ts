@@ -40,7 +40,12 @@ export type SerializedProduct = {
   careInstructions: string | null;
   lengthGuide: string | null;
   offerLengths: boolean;
-  category: { id: string; name: string; slug: string } | null;
+  category: {
+    id: string;
+    name: string;
+    slug: string;
+    parent: { name: string; slug: string } | null;
+  } | null;
   fabricType: {
     id: string;
     name: string;

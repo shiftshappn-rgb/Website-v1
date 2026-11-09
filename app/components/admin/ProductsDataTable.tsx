@@ -187,7 +187,7 @@ export function ProductsDataTable({
         header: "Category",
         accessorKey: "categoryName",
         cell: ({ row }) => row.original.categoryName ?? "—",
-        size: 140,
+        size: 200,
       },
       {
         header: "Variants",

@@ -7,7 +7,7 @@ export { getProductColors, getProductPrimaryImage } from "~/lib/serialize";
 
 const productInclude = {
   variants: true,
-  category: true,
+  category: { include: { parent: true } },
   fabricType: true,
 } satisfies Prisma.ProductInclude;
 
@@ -38,7 +38,17 @@ export function serializeProduct(product: ProductWithRelations) {
     lengthGuide: product.lengthGuide,
     offerLengths: product.offerLengths,
     category: product.category
-      ? { id: product.category.id, name: product.category.name, slug: product.category.slug }
+      ? {
+          id: product.category.id,
+          name: product.category.name,
+          slug: product.category.slug,
+          parent: product.category.parent
+            ? {
+                name: product.category.parent.name,
+                slug: product.category.parent.slug,
+              }
+            : null,
+        }
       : null,
     fabricType: product.fabricType
       ? {
