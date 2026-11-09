@@ -59,7 +59,7 @@ export function ProductCard({ product, cloudName, padded = false }: ProductCardP
         href={href}
         cloudName={cloudName}
         padded={padded}
-        imageClassName="transition-opacity group-hover:opacity-90 bg-card-soft"
+        imageClassName="bg-card-soft"
       />
       <Link to={href} prefetch="intent" className="block">
         <h3 className="mt-3 text-sm font-medium text-charcoal transition-colors line-clamp-2 group-hover:text-navy">
