@@ -1,3 +1,4 @@
+import { audienceFromCategory } from "~/lib/categories";
 import { db } from "~/db.server";
 import { piecePrices } from "~/lib/sets";
 
@@ -8,6 +9,7 @@ export type SetCatalogProduct = {
   basePrice: number;
   status: string;
   categorySlug: string | null;
+  audience: "Women" | "Men" | null;
 };
 
 export type AdminSetListItem = {
@@ -30,7 +32,12 @@ const productSelect = {
   slug: true,
   basePrice: true,
   status: true,
-  category: { select: { slug: true } },
+  category: {
+    select: {
+      slug: true,
+      parent: { select: { slug: true, name: true } },
+    },
+  },
 } as const;
 
 function isTopCategory(slug: string | null | undefined) {
@@ -58,6 +65,7 @@ export async function listCatalogProductsForSets(): Promise<{
     basePrice: Number(product.basePrice),
     status: product.status,
     categorySlug: product.category?.slug ?? null,
+    audience: audienceFromCategory(product.category),
   }));
 
   return {

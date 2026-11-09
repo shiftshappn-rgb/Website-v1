@@ -10,7 +10,16 @@ export type SetFormCatalogProduct = {
   name: string;
   basePrice: number;
   status: string;
+  audience?: "Women" | "Men" | null;
 };
+
+function catalogOptionLabel(product: SetFormCatalogProduct) {
+  const parts = [product.name];
+  if (product.audience) parts.push(product.audience);
+  parts.push(formatCurrency(product.basePrice));
+  const status = product.status !== "active" ? ` (${product.status})` : "";
+  return `${parts.join(" · ")}${status}`;
+}
 
 export type SetFormValues = {
   id?: string;
@@ -116,8 +125,7 @@ export function SetForm({
             <option value="">Choose top…</option>
             {tops.map((product) => (
               <option key={product.id} value={product.id}>
-                {product.name} · {formatCurrency(product.basePrice)}
-                {product.status !== "active" ? ` (${product.status})` : ""}
+                {catalogOptionLabel(product)}
               </option>
             ))}
           </Select>
@@ -131,12 +139,19 @@ export function SetForm({
             <option value="">Choose pants…</option>
             {pants.map((product) => (
               <option key={product.id} value={product.id}>
-                {product.name} · {formatCurrency(product.basePrice)}
-                {product.status !== "active" ? ` (${product.status})` : ""}
+                {catalogOptionLabel(product)}
               </option>
             ))}
           </Select>
         </div>
+        {(tops.length === 0 || pants.length === 0) && (
+          <p className="text-sm text-amber-800" role="status">
+            No tops or pants found. Assign products to{" "}
+            <span className="font-medium">Women/Men › Scrub Tops</span> or{" "}
+            <span className="font-medium">Women/Men › Scrub Pants</span> (not the Women/Men
+            root categories).
+          </p>
+        )}
         {topProductId && pantsProductId && topProductId === pantsProductId && (
           <p className="text-sm text-red-700" role="alert">
             Top and pants must be different products.

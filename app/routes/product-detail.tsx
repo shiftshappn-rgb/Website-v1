@@ -11,6 +11,7 @@ import {
   isAccessoriesCategory,
   isSimpleAccessorySku,
 } from "~/lib/accessories";
+import { audienceShopPath } from "~/lib/categories";
 import { productCardSelect } from "~/lib/catalog.server";
 import { useCart } from "~/lib/cart";
 import { cloudinaryImageUrl } from "~/lib/cloudinary";
@@ -65,7 +66,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     where: { slug: params.slug, status: "active" },
     include: {
       variants: true,
-      category: true,
+      category: { include: { parent: true } },
       fabricType: true,
     },
   });
@@ -165,6 +166,7 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
   const colors = getProductColors(product);
   const [, setSearchParams] = useSearchParams();
   const isAccessory = isAccessoriesCategory(product.category);
+  const audienceCrumb = audienceShopPath(product.category);
   const simpleSku = isAccessory && isSimpleAccessorySku(product.variants);
 
   const [selectedColor, setSelectedColor] = useState(() =>
@@ -289,9 +291,7 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
         data={breadcrumbJsonLd([
           { name: "Home", path: "/" },
           { name: "Shop", path: "/shop" },
-          ...(product.category
-            ? [{ name: product.category.name, path: `/shop/${product.category.slug}` }]
-            : []),
+          ...(audienceCrumb ? [audienceCrumb] : []),
           { name: product.name, path: `/products/${product.slug}` },
         ])}
       />
@@ -302,14 +302,11 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
             <Link to="/shop" className="hover:text-charcoal">
               Shop
             </Link>
-            {product.category && (
+            {audienceCrumb && (
               <>
                 <span className="px-1.5">/</span>
-                <Link
-                  to={`/shop/${product.category.slug}`}
-                  className="hover:text-charcoal"
-                >
-                  {product.category.name}
+                <Link to={audienceCrumb.path} className="hover:text-charcoal">
+                  {audienceCrumb.name}
                 </Link>
               </>
             )}
