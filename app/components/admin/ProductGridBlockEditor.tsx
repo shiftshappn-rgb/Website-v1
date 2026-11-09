@@ -4,7 +4,11 @@ import { Button } from "~/components/ui/Button";
 import { Input, Select } from "~/components/ui/Input";
 import type { ProductGridContent } from "~/components/homepage-blocks/types";
 
-type CatalogProduct = { slug: string; name: string };
+type CatalogProduct = {
+  slug: string;
+  name: string;
+  kind?: "set" | "accessory";
+};
 
 export function ProductGridBlockEditor({
   blockId,
@@ -21,6 +25,15 @@ export function ProductGridBlockEditor({
   const availableProducts = useMemo(
     () => catalogProducts.filter((product) => !selectedSlugs.includes(product.slug)),
     [catalogProducts, selectedSlugs]
+  );
+
+  const availableSets = useMemo(
+    () => availableProducts.filter((item) => item.kind !== "accessory"),
+    [availableProducts]
+  );
+  const availableAccessories = useMemo(
+    () => availableProducts.filter((item) => item.kind === "accessory"),
+    [availableProducts]
   );
 
   function addProduct(slug: string) {
@@ -80,10 +93,11 @@ export function ProductGridBlockEditor({
       />
 
       <div className="space-y-2">
-        <p className="text-sm font-medium text-charcoal">Selected products</p>
+        <p className="text-sm font-medium text-charcoal">Selected sets & accessories</p>
         {selectedSlugs.length === 0 ? (
           <p className="text-sm text-charcoal/60">
-            No products selected. Add products below, or leave empty to use the collection.
+            Nothing selected. Add sets or accessories below, or leave empty to use the
+            collection.
           </p>
         ) : (
           <ul className="space-y-2">
@@ -135,20 +149,33 @@ export function ProductGridBlockEditor({
 
       <div className="flex flex-wrap items-end gap-3">
         <Select
-          label="Add product"
+          label="Add set or accessory"
           defaultValue=""
           onChange={(event) => {
             addProduct(event.target.value);
             event.target.value = "";
           }}
-          className="min-w-[240px]"
+          className="min-w-[280px]"
         >
-          <option value="">Choose a product…</option>
-          {availableProducts.map((product) => (
-            <option key={product.slug} value={product.slug}>
-              {product.name}
-            </option>
-          ))}
+          <option value="">Choose a set or accessory…</option>
+          {availableSets.length > 0 && (
+            <optgroup label="Sets">
+              {availableSets.map((product) => (
+                <option key={product.slug} value={product.slug}>
+                  {product.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {availableAccessories.length > 0 && (
+            <optgroup label="Accessories">
+              {availableAccessories.map((product) => (
+                <option key={product.slug} value={product.slug}>
+                  {product.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
         </Select>
       </div>
 
