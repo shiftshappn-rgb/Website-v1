@@ -6,6 +6,10 @@ import { PasswordField } from "~/components/auth/PasswordField";
 import { Button } from "~/components/ui/Button";
 import { Input } from "~/components/ui/Input";
 import { db } from "~/db.server";
+import {
+  hasFieldErrors,
+  validateRegisterFields,
+} from "~/lib/auth-validation";
 import { claimGuestOrdersByEmail } from "~/lib/claim-orders.server";
 import { isGoogleOAuthConfigured, safeRedirectPath } from "~/lib/google-auth.server";
 import { buildMeta } from "~/lib/seo";
@@ -40,12 +44,16 @@ export async function action({ request }: Route.ActionArgs) {
   const password = formData.get("password") as string;
   const marketingOptIn = formData.get("marketingOptIn") === "on";
 
-  if (!email || !password) {
-    return data({ error: "Email and password are required." }, { status: 400 });
-  }
-
-  if (password.length < 8) {
-    return data({ error: "Password must be at least 8 characters." }, { status: 400 });
+  const fieldErrors = validateRegisterFields({ email, password, name });
+  if (hasFieldErrors(fieldErrors)) {
+    return data(
+      {
+        error: null,
+        fieldErrors,
+        values: { name: name || "", email },
+      },
+      { status: 400 }
+    );
   }
 
   const existing = await db.customer.findUnique({ where: { email } });
@@ -54,11 +62,20 @@ export async function action({ request }: Route.ActionArgs) {
       return data(
         {
           error: "An account with this email already exists. Sign in with Google instead.",
+          fieldErrors: null,
+          values: { name: name || "", email },
         },
         { status: 409 }
       );
     }
-    return data({ error: "An account with this email already exists." }, { status: 409 });
+    return data(
+      {
+        error: "An account with this email already exists.",
+        fieldErrors: null,
+        values: { name: name || "", email },
+      },
+      { status: 409 }
+    );
   }
 
   const passwordHash = await hashPassword(password);
@@ -83,6 +100,8 @@ export default function AuthRegister({ loaderData, actionData }: Route.Component
     redirectTo === "/account"
       ? "/auth/login"
       : `/auth/login?redirectTo=${encodeURIComponent(redirectTo)}`;
+  const fieldErrors = actionData?.fieldErrors ?? null;
+  const values = actionData?.values;
 
   return (
     <AuthShell
@@ -130,7 +149,13 @@ export default function AuthRegister({ loaderData, actionData }: Route.Component
 
         <Form method="post" className="space-y-4">
           <input type="hidden" name="redirectTo" value={redirectTo} />
-          <Input label="Name" name="name" autoComplete="name" placeholder="Optional" />
+          <Input
+            label="Name"
+            name="name"
+            autoComplete="name"
+            placeholder="Optional"
+            defaultValue={values?.name ?? ""}
+          />
           <Input
             label="Email"
             name="email"
@@ -138,13 +163,16 @@ export default function AuthRegister({ loaderData, actionData }: Route.Component
             autoComplete="email"
             inputMode="email"
             required
+            defaultValue={values?.email ?? ""}
+            error={fieldErrors?.email}
           />
           <PasswordField
             label="Password"
             name="password"
             autoComplete="new-password"
             minLength={8}
-            helperText="At least 8 characters."
+            helperText="At least 8 characters, with upper, lower, and a number."
+            error={fieldErrors?.password}
           />
           <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-transparent px-1 py-2 text-sm text-charcoal transition-colors hover:bg-sand/60">
             <input

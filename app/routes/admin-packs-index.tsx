@@ -23,7 +23,9 @@ export async function loader({ request }: Route.LoaderArgs) {
         include: {
           product: { select: { id: true, name: true, basePrice: true, status: true } },
           bundle: {
-            include: {
+            select: {
+              id: true,
+              name: true,
               products: {
                 include: {
                   product: { select: { id: true, name: true, basePrice: true, status: true } },
@@ -87,7 +89,7 @@ export default function AdminPacksIndex({ loaderData, actionData }: Route.Compon
         <div>
           <h1 className="font-serif text-2xl text-navy">Bundles</h1>
           <p className="mt-1 text-sm text-charcoal/60">
-            Promotional groups of products with one primary item and a bundle discount.
+            Promo offers — attach scrub sets and extras with one primary item and a bundle discount.
           </p>
         </div>
         <LinkButton href="/admin/packs/new">Create bundle</LinkButton>

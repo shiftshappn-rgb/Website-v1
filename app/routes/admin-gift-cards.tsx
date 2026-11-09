@@ -14,6 +14,7 @@ import {
 } from "~/lib/gift-card.shared";
 import {
   loadGiftCardShopSettings,
+  resolveGiftCardFromLabel,
   saveGiftCardShopSettings,
 } from "~/lib/gift-card.server";
 import { requireAdmin } from "~/lib/session.server";
@@ -105,12 +106,15 @@ export async function action({ request }: Route.ActionArgs) {
     const amount = formatCurrency(Number(card.initialAmount));
     const target = String(formData.get("target") ?? "buyer");
 
+    const fromLabel = await resolveGiftCardFromLabel(db, card.purchaserEmail);
+
     if (target === "recipient" && card.recipientEmail) {
       await sendGiftCardEmail({
         to: card.recipientEmail,
         code: card.code,
         amount,
         note: card.note,
+        fromLabel,
         isRecipient: true,
         bcc: card.purchaserEmail ?? undefined,
       });
@@ -128,6 +132,7 @@ export async function action({ request }: Route.ActionArgs) {
         code: card.code,
         amount,
         note: card.note,
+        fromLabel,
         isRecipient: true,
       });
     } else {

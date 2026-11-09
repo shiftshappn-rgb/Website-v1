@@ -5,7 +5,7 @@ import { ProductGallery } from "~/components/storefront/ProductGallery";
 import { SizeChartDrawer } from "~/components/storefront/SizeChartDrawer";
 import { isDatabaseAvailable, tryDb } from "~/db.server";
 import { useCart } from "~/lib/cart";
-import { resolveStorefrontPackProducts } from "~/lib/packs.server";
+import { resolveStorefrontPackUnits } from "~/lib/packs.server";
 import { allocatePrices, sortSizes } from "~/lib/sets";
 import { buildMeta, breadcrumbJsonLd, JsonLd, productJsonLd } from "~/lib/seo";
 import { cn, ctaFromHex, formatCurrency, getVariantLabel, parseVariantImages } from "~/lib/utils";
@@ -20,13 +20,35 @@ type PieceVariant = {
   images: Array<{ publicId: string; altText: string }>;
 };
 
-type BundleProduct = {
+type PieceProduct = {
   id: string;
   name: string;
   basePrice: number;
-  isPrimary: boolean;
   variants: PieceVariant[];
 };
+
+type BundleUnit =
+  | {
+      kind: "product";
+      key: string;
+      id: string;
+      name: string;
+      basePrice: number;
+      isPrimary: boolean;
+      variants: PieceVariant[];
+    }
+  | {
+      kind: "set";
+      key: string;
+      bundleId: string;
+      name: string;
+      isPrimary: boolean;
+      top: PieceProduct;
+      pants: PieceProduct;
+    };
+
+type ProductPick = { color: string | null; size: string | null };
+type SetPick = { color: string | null; topSize: string | null; pantsSize: string | null };
 
 export function meta({ loaderData }: Route.MetaArgs) {
   if (!loaderData?.pack) return [{ title: "Bundle not found — shiftshappn" }];
@@ -37,58 +59,34 @@ export function meta({ loaderData }: Route.MetaArgs) {
   });
 }
 
-function toBundleProduct(
-  product: {
-    id: string;
-    name: string;
-    basePrice: number;
-    isPrimary: boolean;
-    variants: Array<{
-      id?: string;
-      colorName: string;
-      colorHex: string;
-      size?: string;
-      inventoryQty?: number;
-      priceOverride?: { toString(): string } | number | null;
-      images: unknown;
-    }>;
-  },
-  fullVariants?: Array<{
-    id: string;
+function mapVariants(
+  basePrice: number,
+  variants: Array<{
+    id?: string;
     colorName: string;
     colorHex: string;
-    size: string;
-    inventoryQty: number;
-    priceOverride: { toString(): string } | number | null;
+    size?: string;
+    inventoryQty?: number;
+    priceOverride?: { toString(): string } | number | null;
     images: unknown;
   }>
-): BundleProduct {
-  const variants = (fullVariants ?? product.variants).map((variant) => ({
+): PieceVariant[] {
+  return variants.map((variant) => ({
     id: String(variant.id ?? ""),
     colorName: variant.colorName,
     colorHex: variant.colorHex,
     size: String(variant.size ?? ""),
     inventoryQty: Number(variant.inventoryQty ?? 0),
     price:
-      variant.priceOverride != null
-        ? Number(variant.priceOverride)
-        : product.basePrice,
+      variant.priceOverride != null ? Number(variant.priceOverride) : basePrice,
     images: parseVariantImages(variant.images).map((image) => ({
       publicId: image.publicId,
       altText: image.altText,
     })),
   }));
-
-  return {
-    id: product.id,
-    name: product.name,
-    basePrice: product.basePrice,
-    isPrimary: product.isPrimary,
-    variants,
-  };
 }
 
-function colorsOf(piece: BundleProduct) {
+function colorsOf(piece: { variants: PieceVariant[] }) {
   const seen = new Set<string>();
   const colors: Array<{ name: string; hex: string }> = [];
   for (const variant of piece.variants) {
@@ -99,7 +97,19 @@ function colorsOf(piece: BundleProduct) {
   return colors;
 }
 
-function sizesFor(piece: BundleProduct, color: string | null) {
+function sharedColors(top: PieceProduct, pants: PieceProduct) {
+  const pantsNames = new Set(pants.variants.map((variant) => variant.colorName));
+  const seen = new Set<string>();
+  const colors: Array<{ name: string; hex: string }> = [];
+  for (const variant of top.variants) {
+    if (!pantsNames.has(variant.colorName) || seen.has(variant.colorName)) continue;
+    seen.add(variant.colorName);
+    colors.push({ name: variant.colorName, hex: variant.colorHex });
+  }
+  return colors;
+}
+
+function sizesFor(piece: { variants: PieceVariant[] }, color: string | null) {
   const matches = piece.variants.filter((variant) => variant.colorName === color);
   const bySize = new Map<string, PieceVariant>();
   for (const variant of matches) {
@@ -111,12 +121,28 @@ function sizesFor(piece: BundleProduct, color: string | null) {
   return sortSizes([...bySize.values()]);
 }
 
-function startingPick(product: BundleProduct) {
+function startingProductPick(product: { variants: PieceVariant[] }): ProductPick {
   const colors = colorsOf(product);
   const color = colors.length === 1 ? colors[0].name : null;
   const sizes = sizesFor(product, color);
   const size = color && sizes.length === 1 ? sizes[0].size : null;
   return { color, size };
+}
+
+function startingSetPick(top: PieceProduct, pants: PieceProduct): SetPick {
+  const colors = sharedColors(top, pants);
+  const color = colors.length === 1 ? colors[0].name : null;
+  const topSizes = sizesFor(top, color);
+  const pantsSizes = sizesFor(pants, color);
+  return {
+    color,
+    topSize: color && topSizes.length === 1 ? topSizes[0].size : null,
+    pantsSize: color && pantsSizes.length === 1 ? pantsSizes[0].size : null,
+  };
+}
+
+function unitLabel(unit: BundleUnit) {
+  return unit.kind === "set" ? `${unit.name} set` : unit.name;
 }
 
 export async function loader({ params }: Route.LoaderArgs) {
@@ -145,7 +171,7 @@ export async function loader({ params }: Route.LoaderArgs) {
 
   if (!pack) throw data("Bundle not found", { status: 404 });
 
-  const resolved = resolveStorefrontPackProducts(
+  const resolved = resolveStorefrontPackUnits(
     pack.items.map((item) => ({
       isPrimary: item.isPrimary,
       sortOrder: item.sortOrder,
@@ -160,6 +186,7 @@ export async function loader({ params }: Route.LoaderArgs) {
         : null,
       bundle: item.bundle
         ? {
+            id: item.bundle.id,
             name: item.bundle.name,
             products: item.bundle.products.map((piece) => ({
               role: piece.role,
@@ -177,26 +204,47 @@ export async function loader({ params }: Route.LoaderArgs) {
     }))
   );
 
-  if (resolved.length < 2) throw data("Bundle not found", { status: 404 });
+  if (resolved.length < 1) throw data("Bundle not found", { status: 404 });
 
-  const variantByProductId = new Map(
-    pack.items
-      .filter((item) => item.product)
-      .map((item) => [item.product!.id, item.product!.variants] as const)
-  );
-
-  // Legacy set expansion: variants live on bundle.products
-  if (variantByProductId.size === 0 && pack.items.some((item) => item.bundle)) {
-    for (const item of pack.items) {
-      for (const piece of item.bundle?.products ?? []) {
-        variantByProductId.set(piece.product.id, piece.product.variants);
-      }
+  const units: BundleUnit[] = resolved.map((unit) => {
+    if (unit.kind === "product") {
+      return {
+        kind: "product" as const,
+        key: `product:${unit.id}`,
+        id: unit.id,
+        name: unit.name,
+        basePrice: unit.basePrice,
+        isPrimary: unit.isPrimary,
+        variants: mapVariants(unit.basePrice, unit.variants as PieceVariant[]),
+      };
     }
-  }
+    return {
+      kind: "set" as const,
+      key: `set:${unit.bundleId}`,
+      bundleId: unit.bundleId,
+      name: unit.name,
+      isPrimary: unit.isPrimary,
+      top: {
+        id: unit.top.id,
+        name: unit.top.name,
+        basePrice: unit.top.basePrice,
+        variants: mapVariants(unit.top.basePrice, unit.top.variants as PieceVariant[]),
+      },
+      pants: {
+        id: unit.pants.id,
+        name: unit.pants.name,
+        basePrice: unit.pants.basePrice,
+        variants: mapVariants(unit.pants.basePrice, unit.pants.variants as PieceVariant[]),
+      },
+    };
+  });
 
-  const products = resolved.map((product) =>
-    toBundleProduct(product, variantByProductId.get(product.id))
+  // A valid promo bundle needs at least two priced pieces after expansion
+  const expandedCount = units.reduce(
+    (count, unit) => count + (unit.kind === "set" ? 2 : 1),
+    0
   );
+  if (expandedCount < 2) throw data("Bundle not found", { status: 404 });
 
   return {
     pack: {
@@ -206,7 +254,7 @@ export async function loader({ params }: Route.LoaderArgs) {
       description: pack.description,
       discountType: pack.discountType,
       discountValue: Number(pack.discountValue),
-      products,
+      units,
     },
     cloudName: process.env.CLOUDINARY_CLOUD_NAME,
   };
@@ -215,101 +263,255 @@ export async function loader({ params }: Route.LoaderArgs) {
 export default function BundleDetail({ loaderData }: Route.ComponentProps) {
   const { pack, cloudName } = loaderData;
   const addPack = useCart((state) => state.addPack);
-  const [picks, setPicks] = useState<Record<string, { color: string | null; size: string | null }>>(
-    () => Object.fromEntries(pack.products.map((product) => [product.id, startingPick(product)]))
+
+  const [productPicks, setProductPicks] = useState<Record<string, ProductPick>>(() =>
+    Object.fromEntries(
+      pack.units
+        .filter((unit): unit is Extract<BundleUnit, { kind: "product" }> => unit.kind === "product")
+        .map((unit) => [unit.key, startingProductPick(unit)])
+    )
+  );
+  const [setPicks, setSetPicks] = useState<Record<string, SetPick>>(() =>
+    Object.fromEntries(
+      pack.units
+        .filter((unit): unit is Extract<BundleUnit, { kind: "set" }> => unit.kind === "set")
+        .map((unit) => [unit.key, startingSetPick(unit.top, unit.pants)])
+    )
   );
   const [quantity, setQuantity] = useState(1);
   const [chartOpen, setChartOpen] = useState(false);
   const [activeImage, setActiveImage] = useState(0);
 
-  const selections = pack.products.map((product) => {
-    const pick = picks[product.id] ?? { color: null, size: null };
-    const variant = sizesFor(product, pick.color).find((item) => item.size === pick.size) ?? null;
-    return { product, pick, variant };
+  type ChosenLine = {
+    unitKey: string;
+    unitLabel: string;
+    productId: string;
+    productName: string;
+    setGroupId?: string;
+    setRole?: "top" | "pants";
+    variant: PieceVariant;
+  };
+
+  const chosenLines: Array<ChosenLine | null> = pack.units.flatMap((unit) => {
+    if (unit.kind === "product") {
+      const pick = productPicks[unit.key] ?? { color: null, size: null };
+      const variant =
+        sizesFor(unit, pick.color).find((item) => item.size === pick.size) ?? null;
+      if (!variant) return [null];
+      return [
+        {
+          unitKey: unit.key,
+          unitLabel: unit.name,
+          productId: unit.id,
+          productName: unit.name,
+          variant,
+        },
+      ];
+    }
+
+    const pick = setPicks[unit.key] ?? {
+      color: null,
+      topSize: null,
+      pantsSize: null,
+    };
+    const topVariant =
+      sizesFor(unit.top, pick.color).find((item) => item.size === pick.topSize) ?? null;
+    const pantsVariant =
+      sizesFor(unit.pants, pick.color).find((item) => item.size === pick.pantsSize) ??
+      null;
+    const setGroupId = `${pack.slug}:set:${unit.bundleId}`;
+    return [
+      topVariant
+        ? {
+            unitKey: unit.key,
+            unitLabel: `${unit.name} set`,
+            productId: unit.top.id,
+            productName: `${unit.name} set · Top`,
+            setGroupId,
+            setRole: "top" as const,
+            variant: topVariant,
+          }
+        : null,
+      pantsVariant
+        ? {
+            unitKey: unit.key,
+            unitLabel: `${unit.name} set`,
+            productId: unit.pants.id,
+            productName: `${unit.name} set · Pants`,
+            setGroupId,
+            setRole: "pants" as const,
+            variant: pantsVariant,
+          }
+        : null,
+    ];
   });
 
-  const partPrices = selections.map(
-    (item) => item.variant?.price ?? item.product.basePrice
+  const readyLines = chosenLines.filter((line): line is ChosenLine => Boolean(line));
+  const expectedLineCount = pack.units.reduce(
+    (count, unit) => count + (unit.kind === "set" ? 2 : 1),
+    0
   );
-  const priced = allocatePrices(partPrices, pack.discountType, pack.discountValue);
-  const undiscounted = partPrices.reduce((sum, price) => sum + price, 0);
-
-  const allChosen = selections.every((item) => item.variant);
-  const allReady = selections.every(
-    (item) => item.variant && item.variant.inventoryQty > 0
-  );
+  const allChosen = readyLines.length === expectedLineCount;
+  const allReady = allChosen && readyLines.every((line) => line.variant.inventoryQty > 0);
   const canAdd = allChosen && allReady;
-  const incomplete = selections.find((item) => !item.variant);
-  const oos = selections.find(
-    (item) => item.variant && item.variant.inventoryQty <= 0
-  );
+
+  const estimateParts = pack.units.flatMap((unit) => {
+    if (unit.kind === "product") {
+      const pick = productPicks[unit.key];
+      const variant = pick
+        ? sizesFor(unit, pick.color).find((item) => item.size === pick.size)
+        : null;
+      return [variant?.price ?? unit.basePrice];
+    }
+    const pick = setPicks[unit.key];
+    const topVariant = pick
+      ? sizesFor(unit.top, pick.color).find((item) => item.size === pick.topSize)
+      : null;
+    const pantsVariant = pick
+      ? sizesFor(unit.pants, pick.color).find((item) => item.size === pick.pantsSize)
+      : null;
+    return [
+      topVariant?.price ?? unit.top.basePrice,
+      pantsVariant?.price ?? unit.pants.basePrice,
+    ];
+  });
+  const priced = allocatePrices(estimateParts, pack.discountType, pack.discountValue);
+  const undiscounted = estimateParts.reduce((sum, price) => sum + price, 0);
+
+  const incompleteUnit = pack.units.find((unit) => {
+    if (unit.kind === "product") {
+      const pick = productPicks[unit.key];
+      return !pick?.color || !pick.size;
+    }
+    const pick = setPicks[unit.key];
+    return !pick?.color || !pick.topSize || !pick.pantsSize;
+  });
+  const oos = readyLines.find((line) => line.variant.inventoryQty <= 0);
   const maxQty = canAdd
-    ? Math.max(1, Math.min(...selections.map((item) => item.variant!.inventoryQty)))
+    ? Math.max(1, Math.min(...readyLines.map((line) => line.variant.inventoryQty)))
     : 1;
 
   const images = useMemo(() => {
+    const collected: Array<{ publicId: string; altText: string }> = [];
+    const seen = new Set<string>();
+    const push = (list: Array<{ publicId: string; altText: string }>) => {
+      for (const image of list) {
+        if (seen.has(image.publicId)) continue;
+        seen.add(image.publicId);
+        collected.push(image);
+      }
+    };
+
     const ordered = [
-      ...selections.filter((item) => item.product.isPrimary),
-      ...selections.filter((item) => !item.product.isPrimary),
+      ...pack.units.filter((unit) => unit.isPrimary),
+      ...pack.units.filter((unit) => !unit.isPrimary),
     ];
-    return ordered.flatMap((item) => {
-      if (item.variant?.images.length) return item.variant.images;
-      const colors = colorsOf(item.product);
-      const fallbackColor = item.pick.color ?? colors[0]?.name ?? null;
-      return sizesFor(item.product, fallbackColor)[0]?.images ?? item.product.variants[0]?.images ?? [];
-    });
-  }, [selections]);
+
+    for (const unit of ordered) {
+      if (unit.kind === "product") {
+        const pick = productPicks[unit.key];
+        const variant = pick
+          ? sizesFor(unit, pick.color).find((item) => item.size === pick.size)
+          : null;
+        if (variant?.images.length) {
+          push(variant.images);
+          continue;
+        }
+        const color = pick?.color ?? colorsOf(unit)[0]?.name ?? null;
+        push(sizesFor(unit, color)[0]?.images ?? unit.variants[0]?.images ?? []);
+        continue;
+      }
+
+      const pick = setPicks[unit.key];
+      const color = pick?.color ?? sharedColors(unit.top, unit.pants)[0]?.name ?? null;
+      const topVariant = pick?.topSize
+        ? sizesFor(unit.top, color).find((item) => item.size === pick.topSize)
+        : null;
+      const pantsVariant = pick?.pantsSize
+        ? sizesFor(unit.pants, color).find((item) => item.size === pick.pantsSize)
+        : null;
+      push(topVariant?.images.length ? topVariant.images : sizesFor(unit.top, color)[0]?.images ?? []);
+      push(
+        pantsVariant?.images.length
+          ? pantsVariant.images
+          : sizesFor(unit.pants, color)[0]?.images ?? []
+      );
+    }
+
+    return collected;
+  }, [pack.units, productPicks, setPicks]);
 
   const cloud = cloudName ?? "demo";
   const imageSrc = (publicId: string, width: number) =>
     `https://res.cloudinary.com/${cloud}/image/upload/f_auto,q_auto,w_${width}/${publicId}`;
   const shown = images[Math.min(activeImage, Math.max(images.length - 1, 0))];
 
-  function updatePick(id: string, next: { color: string | null; size: string | null }) {
-    setPicks((current) => ({ ...current, [id]: next }));
+  function updateProductPick(key: string, next: ProductPick) {
+    setProductPicks((current) => ({ ...current, [key]: next }));
+    setQuantity(1);
+    setActiveImage(0);
+  }
+
+  function updateSetPick(key: string, next: SetPick) {
+    setSetPicks((current) => ({ ...current, [key]: next }));
     setQuantity(1);
     setActiveImage(0);
   }
 
   function handleAdd() {
     if (!canAdd) return;
-    const chosen = selections.map((item) => item.variant!);
-    const groupId = [pack.slug, ...chosen.map((variant) => variant.id)].join(":");
+    const groupId = [
+      pack.slug,
+      ...readyLines.map((line) => line.variant.id),
+    ].join(":");
     const shares = allocatePrices(
-      chosen.map((variant) => variant.price),
+      readyLines.map((line) => line.variant.price),
       pack.discountType,
       pack.discountValue
     );
 
     addPack(
-      chosen.map((variant, index) => {
-        const product = selections[index].product;
-        return {
-          packGroupId: groupId,
-          variantId: variant.id,
-          productId: product.id,
-          productName: `${pack.name} · ${product.name}`,
-          variantLabel: getVariantLabel(variant.colorName, variant.size),
-          colorHex: variant.colorHex,
-          price: shares.shares[index] ?? variant.price,
-          imagePublicId: variant.images[0]?.publicId,
-          imageAlt: variant.images[0]?.altText || product.name,
-          quantity,
-        };
-      })
+      readyLines.map((line, index) => ({
+        packGroupId: groupId,
+        setGroupId: line.setGroupId
+          ? `${groupId}:${line.setGroupId}`
+          : undefined,
+        setRole: line.setRole,
+        variantId: line.variant.id,
+        productId: line.productId,
+        productName: `${pack.name} · ${line.productName}`,
+        variantLabel: getVariantLabel(line.variant.colorName, line.variant.size),
+        colorHex: line.variant.colorHex,
+        price: shares.shares[index] ?? line.variant.price,
+        imagePublicId: line.variant.images[0]?.publicId,
+        imageAlt: line.variant.images[0]?.altText || line.productName,
+        quantity,
+      }))
     );
   }
 
-  const addLabel = incomplete
-    ? `Select ${incomplete.product.name}`
+  const addLabel = incompleteUnit
+    ? `Select ${unitLabel(incompleteUnit)}`
     : oos
       ? "Out of stock"
       : `${formatCurrency(priced.total)} · Add to bag`;
 
-  const primaryHex =
-    selections.find((item) => item.product.isPrimary)?.variant?.colorHex ??
-    selections[0]?.variant?.colorHex ??
-    selections[0]?.product.variants[0]?.colorHex;
+  const primaryHex = (() => {
+    const primary = pack.units.find((unit) => unit.isPrimary) ?? pack.units[0];
+    if (!primary) return undefined;
+    if (primary.kind === "product") {
+      const pick = productPicks[primary.key];
+      return (
+        sizesFor(primary, pick?.color ?? null).find((item) => item.size === pick?.size)
+          ?.colorHex ?? primary.variants[0]?.colorHex
+      );
+    }
+    const pick = setPicks[primary.key];
+    return (
+      sizesFor(primary.top, pick?.color ?? null).find((item) => item.size === pick?.topSize)
+        ?.colorHex ?? primary.top.variants[0]?.colorHex
+    );
+  })();
   const ctaStyle = ctaFromHex(primaryHex);
 
   return (
@@ -359,7 +561,7 @@ export default function BundleDetail({ loaderData }: Route.ComponentProps) {
                 {pack.name}
               </h1>
               <p className="mt-2 text-[13px] text-charcoal/55">
-                {pack.products.map((product) => product.name).join(" · ")}
+                {pack.units.map((unit) => unitLabel(unit)).join(" · ")}
               </p>
               <p className="mt-4 text-lg font-medium text-charcoal">
                 {formatCurrency(priced.total)}
@@ -375,17 +577,19 @@ export default function BundleDetail({ loaderData }: Route.ComponentProps) {
                   Includes
                 </p>
                 <ul className="mt-3 space-y-3">
-                  {pack.products.map((product) => {
+                  {pack.units.map((unit) => {
                     const thumb =
-                      product.variants.find((variant) => variant.images.length > 0)?.images[0] ??
-                      null;
+                      unit.kind === "product"
+                        ? unit.variants.find((variant) => variant.images.length > 0)?.images[0]
+                        : unit.top.variants.find((variant) => variant.images.length > 0)
+                            ?.images[0];
                     return (
-                      <li key={product.id} className="flex items-center gap-3">
+                      <li key={unit.key} className="flex items-center gap-3">
                         <div className="size-12 shrink-0 overflow-hidden rounded-md bg-stone">
                           {thumb ? (
                             <img
                               src={imageSrc(thumb.publicId, 96)}
-                              alt={thumb.altText || product.name}
+                              alt={thumb.altText || unitLabel(unit)}
                               className="h-full w-full object-cover"
                               loading="lazy"
                             />
@@ -393,15 +597,19 @@ export default function BundleDetail({ loaderData }: Route.ComponentProps) {
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[13px] font-medium text-charcoal">
-                            {product.name}
-                            {product.isPrimary && (
+                            {unitLabel(unit)}
+                            {unit.isPrimary && (
                               <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-charcoal/45">
                                 Primary
                               </span>
                             )}
                           </p>
                           <p className="text-[12px] text-charcoal/55">
-                            {formatCurrency(product.basePrice)}
+                            {formatCurrency(
+                              unit.kind === "set"
+                                ? unit.top.basePrice + unit.pants.basePrice
+                                : unit.basePrice
+                            )}
                           </p>
                         </div>
                       </li>
@@ -410,20 +618,85 @@ export default function BundleDetail({ loaderData }: Route.ComponentProps) {
                 </ul>
               </div>
 
-              {selections.map(({ product, pick }) => {
-                const colors = colorsOf(product);
-                const sizes = sizesFor(product, pick.color);
-                const showSizeChart = !product.name.toLowerCase().includes("bag");
+              {pack.units.map((unit) => {
+                if (unit.kind === "product") {
+                  const pick = productPicks[unit.key] ?? { color: null, size: null };
+                  const colors = colorsOf(unit);
+                  const sizes = sizesFor(unit, pick.color);
+                  const showSizeChart = !unit.name.toLowerCase().includes("bag");
+                  return (
+                    <div
+                      key={unit.key}
+                      className="mt-10 border-t border-charcoal/10 pt-8 first:mt-8 first:border-t-0 first:pt-0"
+                    >
+                      <h2 className="text-[15px] font-medium text-charcoal">
+                        {unit.name}
+                        {unit.isPrimary && (
+                          <span className="ml-2 text-[11px] font-semibold uppercase tracking-wide text-charcoal/45">
+                            Primary
+                          </span>
+                        )}
+                      </h2>
+                      {colors.length > 0 && (
+                        <OptionRow
+                          label="Colour"
+                          selected={pick.color}
+                          options={colors.map((item) => {
+                            const itemSizes = sizesFor(unit, item.name);
+                            return {
+                              id: item.name,
+                              label: item.name,
+                              swatch: item.hex,
+                              disabled:
+                                itemSizes.length > 0 &&
+                                itemSizes.every((variant) => variant.inventoryQty <= 0),
+                            };
+                          })}
+                          onSelect={(next) => {
+                            const nextSizes = sizesFor(unit, next);
+                            updateProductPick(unit.key, {
+                              color: next,
+                              size: nextSizes.length === 1 ? nextSizes[0].size : null,
+                            });
+                          }}
+                        />
+                      )}
+                      {pick.color && sizes.length > 0 && (
+                        <OptionRow
+                          label="Size"
+                          selected={pick.size}
+                          options={sizes.map((variant) => ({
+                            id: variant.size,
+                            label: variant.size,
+                            disabled: variant.inventoryQty <= 0,
+                          }))}
+                          onSelect={(size) =>
+                            updateProductPick(unit.key, { color: pick.color, size })
+                          }
+                          onChart={showSizeChart ? () => setChartOpen(true) : undefined}
+                        />
+                      )}
+                    </div>
+                  );
+                }
+
+                const pick = setPicks[unit.key] ?? {
+                  color: null,
+                  topSize: null,
+                  pantsSize: null,
+                };
+                const colors = sharedColors(unit.top, unit.pants);
+                const topSizes = sizesFor(unit.top, pick.color);
+                const pantsSizes = sizesFor(unit.pants, pick.color);
+
                 return (
                   <div
-                    key={product.id}
-                    className={cn(
-                      "mt-10 border-t border-charcoal/10 pt-8 first:mt-8 first:border-t-0 first:pt-0"
-                    )}
+                    key={unit.key}
+                    className="mt-10 border-t border-charcoal/10 pt-8 first:mt-8 first:border-t-0 first:pt-0"
                   >
                     <h2 className="text-[15px] font-medium text-charcoal">
-                      {product.name}
-                      {product.isPrimary && (
+                      {unit.name} set
+                      {unit.isPrimary && (
                         <span className="ml-2 text-[11px] font-semibold uppercase tracking-wide text-charcoal/45">
                           Primary
                         </span>
@@ -434,40 +707,58 @@ export default function BundleDetail({ loaderData }: Route.ComponentProps) {
                         label="Colour"
                         selected={pick.color}
                         options={colors.map((item) => {
-                          const itemSizes = sizesFor(product, item.name);
+                          const tops = sizesFor(unit.top, item.name);
+                          const pants = sizesFor(unit.pants, item.name);
                           return {
                             id: item.name,
                             label: item.name,
                             swatch: item.hex,
                             disabled:
-                              itemSizes.length > 0 &&
-                              itemSizes.every((variant) => variant.inventoryQty <= 0),
+                              (tops.length > 0 &&
+                                tops.every((variant) => variant.inventoryQty <= 0)) ||
+                              (pants.length > 0 &&
+                                pants.every((variant) => variant.inventoryQty <= 0)),
                           };
                         })}
                         onSelect={(next) => {
-                          const nextSizes = sizesFor(product, next);
-                          updatePick(product.id, {
+                          const nextTop = sizesFor(unit.top, next);
+                          const nextPants = sizesFor(unit.pants, next);
+                          updateSetPick(unit.key, {
                             color: next,
-                            size: nextSizes.length === 1 ? nextSizes[0].size : null,
+                            topSize: nextTop.length === 1 ? nextTop[0].size : null,
+                            pantsSize: nextPants.length === 1 ? nextPants[0].size : null,
                           });
                         }}
                       />
                     )}
-                    {pick.color && sizes.length > 0 && (
+                    {pick.color && topSizes.length > 0 && (
                       <OptionRow
-                        label="Size"
-                        selected={pick.size}
-                        options={sizes.map((variant) => ({
+                        label="Top size"
+                        selected={pick.topSize}
+                        options={topSizes.map((variant) => ({
                           id: variant.size,
                           label: variant.size,
                           disabled: variant.inventoryQty <= 0,
                         }))}
-                        onSelect={(size) =>
-                          updatePick(product.id, { color: pick.color, size })
+                        onSelect={(topSize) =>
+                          updateSetPick(unit.key, { ...pick, topSize })
                         }
-                        onChart={
-                          showSizeChart ? () => setChartOpen(true) : undefined
+                        onChart={() => setChartOpen(true)}
+                      />
+                    )}
+                    {pick.color && pantsSizes.length > 0 && (
+                      <OptionRow
+                        label="Pants size"
+                        selected={pick.pantsSize}
+                        options={pantsSizes.map((variant) => ({
+                          id: variant.size,
+                          label: variant.size,
+                          disabled: variant.inventoryQty <= 0,
+                        }))}
+                        onSelect={(pantsSize) =>
+                          updateSetPick(unit.key, { ...pick, pantsSize })
                         }
+                        onChart={() => setChartOpen(true)}
                       />
                     )}
                   </div>
@@ -504,9 +795,9 @@ export default function BundleDetail({ loaderData }: Route.ComponentProps) {
                   {addLabel}
                 </button>
               </div>
-              {!allChosen && incomplete && (
+              {!allChosen && incompleteUnit && (
                 <p className="mt-2 text-center text-[12px] text-charcoal/55">
-                  Still need a selection for {incomplete.product.name}.
+                  Still need a selection for {unitLabel(incompleteUnit)}.
                 </p>
               )}
               <p className="mt-3 text-center text-[12px] text-charcoal/45">

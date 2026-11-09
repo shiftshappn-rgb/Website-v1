@@ -7,16 +7,20 @@ export function PasswordField({
   name = "password",
   autoComplete = "current-password",
   helperText,
+  error,
   minLength,
   required = true,
+  defaultValue,
   className,
 }: {
   label?: string;
   name?: string;
   autoComplete?: string;
   helperText?: string;
+  error?: string;
   minLength?: number;
   required?: boolean;
+  defaultValue?: string;
   className?: string;
 }) {
   const id = useId();
@@ -35,7 +39,15 @@ export function PasswordField({
           autoComplete={autoComplete}
           required={required}
           minLength={minLength}
-          className="w-full rounded-lg border border-charcoal/20 bg-white py-2.5 pl-4 pr-12 text-sm text-charcoal placeholder:text-charcoal/40 focus:border-navy focus:outline-none focus:ring-1 focus:ring-navy"
+          defaultValue={defaultValue}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={
+            error ? `${id}-error` : helperText ? `${id}-hint` : undefined
+          }
+          className={cn(
+            "w-full rounded-lg border border-charcoal/20 bg-white py-2.5 pl-4 pr-12 text-sm text-charcoal placeholder:text-charcoal/40 focus:border-navy focus:outline-none focus:ring-1 focus:ring-navy",
+            error && "border-red-500"
+          )}
         />
         <button
           type="button"
@@ -47,7 +59,15 @@ export function PasswordField({
           {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
         </button>
       </div>
-      {helperText ? <p className="text-xs text-charcoal/50">{helperText}</p> : null}
+      {error ? (
+        <p id={`${id}-error`} className="text-xs text-red-600">
+          {error}
+        </p>
+      ) : helperText ? (
+        <p id={`${id}-hint`} className="text-xs text-charcoal/50">
+          {helperText}
+        </p>
+      ) : null}
     </div>
   );
 }

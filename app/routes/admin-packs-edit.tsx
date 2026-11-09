@@ -6,9 +6,10 @@ import { Badge } from "~/components/ui/Badge";
 import { db, isDatabaseAvailable } from "~/db.server";
 import {
   listCatalogProductsForPacks,
-  parsePackProductEntries,
-  resolvePackProducts,
-  savePackProducts,
+  listCatalogSetsForPacks,
+  parsePackItemEntries,
+  resolvePackItemEntries,
+  savePackItems,
 } from "~/lib/packs-admin.server";
 import { requireAdmin } from "~/lib/session.server";
 import { slugify } from "~/lib/utils";
@@ -40,11 +41,25 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 
   if (!pack) throw new Response("Bundle not found", { status: 404 });
 
-  const products = resolvePackProducts(pack.items);
+  const items = resolvePackItemEntries(
+    pack.items.map((item) => ({
+      isPrimary: item.isPrimary,
+      sortOrder: item.sortOrder,
+      product: item.product,
+      bundle: item.bundle
+        ? {
+            id: item.bundle.id,
+            name: item.bundle.name,
+            products: item.bundle.products,
+          }
+        : null,
+    }))
+  );
 
   return {
     dbAvailable: true as const,
     catalog: await listCatalogProductsForPacks(),
+    setsCatalog: await listCatalogSetsForPacks(),
     pack: {
       id: pack.id,
       name: pack.name,
@@ -53,10 +68,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
       discountType: pack.discountType,
       discountValue: Number(pack.discountValue),
       status: pack.status,
-      products: products.map((product) => ({
-        productId: product.productId,
-        isPrimary: product.isPrimary,
-      })),
+      items,
     },
   };
 }
@@ -81,15 +93,17 @@ export async function action({ request, params }: Route.ActionArgs) {
     String(formData.get("discountType") ?? "fixed") === "percent" ? "percent" : "fixed";
   const discountValue = Number(formData.get("discountValue") ?? 0);
   const status = String(formData.get("status") ?? "draft") === "active" ? "active" : "draft";
-  const entries = parsePackProductEntries(formData);
+  const entries = parsePackItemEntries(formData);
 
   if (!name) return { error: "Bundle name is required." };
   if (!Number.isFinite(discountValue) || discountValue < 0) {
     return { error: "Discount must be zero or more." };
   }
-  if (entries.length < 2) return { error: "Add at least two products." };
+  if (entries.length < 2) {
+    return { error: "Add at least two items (for example a scrub set plus an accessory)." };
+  }
   if (entries.filter((entry) => entry.isPrimary).length !== 1) {
-    return { error: "Mark exactly one product as primary." };
+    return { error: "Mark exactly one item as primary." };
   }
 
   try {
@@ -97,10 +111,13 @@ export async function action({ request, params }: Route.ActionArgs) {
       where: { id },
       data: { name, slug, description, discountType, discountValue, status },
     });
-    await savePackProducts(id, entries);
+    await savePackItems(id, entries);
     return { success: "Bundle saved." };
   } catch (error) {
-    if (error instanceof Error && /products|primary/i.test(error.message)) {
+    if (
+      error instanceof Error &&
+      /items|primary|products|sets|accessory/i.test(error.message)
+    ) {
       return { error: error.message };
     }
     return { error: "That slug is already used. Choose another." };
@@ -110,7 +127,7 @@ export async function action({ request, params }: Route.ActionArgs) {
 export default function AdminPacksEdit({ loaderData }: Route.ComponentProps) {
   const actionData = useActionData<typeof action>();
   if (!loaderData.dbAvailable) return <DatabaseUnavailable />;
-  const { pack, catalog } = loaderData;
+  const { pack, catalog, setsCatalog } = loaderData;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -151,7 +168,12 @@ export default function AdminPacksEdit({ loaderData }: Route.ComponentProps) {
         </div>
       )}
 
-      <PackForm catalog={catalog} pack={pack} submitLabel="Save bundle" />
+      <PackForm
+        catalog={catalog}
+        setsCatalog={setsCatalog}
+        pack={pack}
+        submitLabel="Save bundle"
+      />
     </div>
   );
 }

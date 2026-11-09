@@ -67,9 +67,18 @@ function buildCartRows(items: CartItem[]): CartRow[] {
       parseBundleProductName(lines[0]?.productName ?? "").bundleName ??
       lines[0]?.productName ??
       "Bundle";
-    const includes = lines.map(
-      (line) => parseBundleProductName(line.productName).pieceName
-    );
+    const includes: string[] = [];
+    const seenSetGroups = new Set<string>();
+    for (const line of lines) {
+      if (line.packGroupId && line.setGroupId) {
+        if (seenSetGroups.has(line.setGroupId)) continue;
+        seenSetGroups.add(line.setGroupId);
+        const piece = parseBundleProductName(line.productName).pieceName;
+        includes.push(piece.replace(/\s·\s(Top|Pants)$/i, ""));
+        continue;
+      }
+      includes.push(parseBundleProductName(line.productName).pieceName);
+    }
     const unitTotal = lines.reduce((sum, line) => sum + line.price, 0);
 
     rows.push({

@@ -4,6 +4,7 @@ import type { Route } from "./+types/api-webhook";
 import { tryDb } from "~/db.server";
 import { generateGiftCardCode } from "~/lib/commerce.server";
 import { sendGiftCardEmail } from "~/lib/email.server";
+import { resolveGiftCardFromLabel } from "~/lib/gift-card.server";
 import {
   applyOrderRefundSideEffects,
   deliverOrderConfirmation,
@@ -276,6 +277,8 @@ async function handleCheckoutCompleted(
     await deliverOrderConfirmation(db, order.id);
   }
 
+  const giftFromLabel = await resolveGiftCardFromLabel(db, email);
+
   for (const issued of issuedCodes) {
     if (issued.recipientEmail) {
       await sendGiftCardEmail({
@@ -283,6 +286,7 @@ async function handleCheckoutCompleted(
         code: issued.code,
         amount: formatCurrency(issued.amount),
         note: issued.giftNote,
+        fromLabel: giftFromLabel,
         isRecipient: true,
         bcc: email || undefined,
       });

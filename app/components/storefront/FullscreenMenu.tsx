@@ -8,7 +8,7 @@ const menuLinks = [
   { label: "Shop", href: "/shop" },
   { label: "Women", href: "/shop/women" },
   { label: "Men", href: "/shop/men" },
-  { label: "Sets", href: "/shop" },
+  { label: "ShiftKnit", href: "/shiftknit" },
   { label: "Bundles", href: "/shop/bundles" },
   { label: "Accessories", href: "/shop/accessories" },
   { label: "Community", href: "/community" },

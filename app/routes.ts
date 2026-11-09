@@ -85,6 +85,11 @@ export default [
       route("categories", "routes/admin-categories.tsx"),
       route("colors", "routes/admin-colors.tsx"),
       route("collections", "routes/admin-collections.tsx"),
+      ...prefix("sets", [
+        index("routes/admin-sets-index.tsx"),
+        route("new", "routes/admin-sets-new.tsx"),
+        route(":id", "routes/admin-sets-edit.tsx"),
+      ]),
       ...prefix("packs", [
         index("routes/admin-packs-index.tsx"),
         route("new", "routes/admin-packs-new.tsx"),

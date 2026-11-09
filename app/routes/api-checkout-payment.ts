@@ -4,6 +4,7 @@ import { tryDb } from "~/db.server";
 import type { CartItem } from "~/lib/checkout-context";
 import { generateGiftCardCode } from "~/lib/commerce.server";
 import { sendGiftCardEmail } from "~/lib/email.server";
+import { resolveGiftCardFromLabel } from "~/lib/gift-card.server";
 import { checkoutSuccessPath } from "~/lib/order-access.server";
 import { deliverOrderConfirmation, recordPaidOrder } from "~/lib/paid-order.server";
 import { getCustomer } from "~/lib/session.server";
@@ -267,6 +268,19 @@ export async function action({ request }: Route.ActionArgs) {
         }
       }
 
+      const giftFromLabel = await resolveGiftCardFromLabel(
+        db,
+        phase1.email,
+        customerId
+          ? (
+              await db.customer.findUnique({
+                where: { id: customerId },
+                select: { name: true },
+              })
+            )?.name
+          : null
+      );
+
       for (const item of cartItems) {
         if (item.kind !== "gift_card") continue;
         const amount = item.giftAmount ?? item.price;
@@ -291,6 +305,7 @@ export async function action({ request }: Route.ActionArgs) {
                 code,
                 amount: formatCurrency(amount),
                 note: item.giftNote,
+                fromLabel: giftFromLabel,
                 isRecipient: true,
               });
             } catch (error) {

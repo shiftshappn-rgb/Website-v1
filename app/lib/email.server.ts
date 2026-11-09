@@ -169,6 +169,7 @@ export async function sendGiftCardEmail({
   amount,
   note,
   recipientName,
+  fromLabel,
   isRecipient = false,
   bcc,
 }: {
@@ -177,6 +178,8 @@ export async function sendGiftCardEmail({
   amount: string;
   note?: string | null;
   recipientName?: string;
+  /** Purchaser display name or email shown to the recipient. */
+  fromLabel?: string | null;
   isRecipient?: boolean;
   bcc?: string;
 }) {
@@ -186,29 +189,40 @@ export async function sendGiftCardEmail({
       : `<p>Hi there,</p>`
     : `<p>Thanks for your purchase.</p>`;
 
+  const sender = fromLabel?.trim();
   const intro = isRecipient
-    ? `<p>Someone sent you a ShiftsHappn e-gift card worth <strong>${amount}</strong>.</p>`
+    ? sender
+      ? `<p><strong>${escapeHtml(sender)}</strong> sent you a ShiftsHappn e-gift card worth <strong>${amount}</strong>.</p>`
+      : `<p>Someone sent you a ShiftsHappn e-gift card worth <strong>${amount}</strong>.</p>`
     : `<p>Your ShiftsHappn e-gift card is ready.</p>`;
 
   const noteBlock = note
-    ? `<p style="margin:16px 0;padding:16px;background:#F6F1E9;border-radius:8px;color:#1C2B36"><em>${note}</em></p>`
+    ? `<p style="margin:16px 0;padding:16px;background:#F6F1E9;border-radius:8px;color:#1C2B36"><em>${escapeHtml(note)}</em></p>`
     : "";
+
+  const fromLine =
+    isRecipient && sender
+      ? `<p style="color:#666;font-size:14px">From: ${escapeHtml(sender)}</p>`
+      : "";
 
   await sendEmail({
     to,
     bcc: bcc ? [bcc] : undefined,
     label: "gift card email",
     subject: isRecipient
-      ? "You received a ShiftsHappn gift card"
+      ? sender
+        ? `${sender} sent you a ShiftsHappn gift card`
+        : "You received a ShiftsHappn gift card"
       : "Your ShiftsHappn gift card",
     html: `
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#1C2B36">
         <h1 style="color:#1D4E78;font-family:serif">ShiftsHappn e-gift card</h1>
         ${greeting}
         ${intro}
+        ${fromLine}
         ${noteBlock}
-        <p style="font-size:18px;margin:24px 0"><strong>Code:</strong> <code style="background:#F6F1E9;padding:8px 12px;border-radius:6px;font-size:16px">${code}</code></p>
-        <p style="color:#666">Redeem this code at checkout on shiftshappn.com. Balance can be checked on the gift cards page.</p>
+        <p style="font-size:18px;margin:24px 0"><strong>Code:</strong> <code style="background:#F6F1E9;padding:8px 12px;border-radius:6px;font-size:16px">${escapeHtml(code)}</code></p>
+        <p style="color:#666">Redeem this code at checkout on shiftshappn.com. Sign in with this email to see the gift under Account → Rewards.</p>
       </div>
     `,
   });
