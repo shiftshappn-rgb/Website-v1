@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { ACCESSORIES_CATEGORY_SLUG } from "~/lib/accessories";
 import { tryDb } from "~/db.server";
 import { serializeProductForCard } from "~/lib/serialize.server";
 import type { ProductCardData } from "~/lib/serialize";
@@ -162,12 +163,23 @@ async function loadSetCards(db: NonNullable<ReturnType<typeof tryDb>>) {
   });
 }
 
-function sortSetCards(sets: SetCard[], sort: string) {
-  const copy = [...sets];
+type ListingItem = {
+  createdAt: Date;
+  fabricSlug: string | null;
+  fabricName: string | null;
+  card: ProductCardData;
+};
+
+function sortListingItems(items: ListingItem[], sort: string) {
+  const copy = [...items];
   if (sort === "price-asc") copy.sort((a, b) => a.card.basePrice - b.card.basePrice);
   else if (sort === "price-desc") copy.sort((a, b) => b.card.basePrice - a.card.basePrice);
   else copy.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   return copy;
+}
+
+function sortSetCards(sets: SetCard[], sort: string) {
+  return sortListingItems(sets, sort);
 }
 
 export type ShopListingResult = {
@@ -204,26 +216,59 @@ export async function loadShopListing(opts: {
   const inAudience = opts.categorySlug
     ? sets.filter((set) => set.audience === opts.categorySlug)
     : sets;
+
+  // Shop all mixes scrub sets with accessories / underscrubs (sold individually).
+  // Women/Men PLPs stay set-only.
+  const accessoryRows =
+    opts.categorySlug
+      ? []
+      : await db.product.findMany({
+          where: {
+            status: "active",
+            category: { slug: ACCESSORIES_CATEGORY_SLUG },
+          },
+          select: {
+            ...productCardSelect,
+            createdAt: true,
+          },
+          orderBy: { name: "asc" },
+        });
+
+  const items: ListingItem[] = [
+    ...inAudience.map((set) => ({
+      createdAt: set.createdAt,
+      fabricSlug: set.fabricSlug,
+      fabricName: set.fabricName,
+      card: set.card,
+    })),
+    ...accessoryRows.map((product) => ({
+      createdAt: product.createdAt,
+      fabricSlug: product.fabricType?.slug ?? null,
+      fabricName: product.fabricType?.name ?? null,
+      card: serializeProductForCard(product),
+    })),
+  ];
+
   const filters = deriveFilters(
-    inAudience.map((set) => ({
+    items.map((item) => ({
       fabricType:
-        set.fabricSlug && set.fabricName
-          ? { slug: set.fabricSlug, name: set.fabricName }
+        item.fabricSlug && item.fabricName
+          ? { slug: item.fabricSlug, name: item.fabricName }
           : null,
-      variants: set.card.colors.map((colorOption) => ({
+      variants: item.card.colors.map((colorOption) => ({
         colorName: colorOption.name,
         colorHex: colorOption.hex,
       })),
     }))
   );
-  const listed = inAudience.filter((set) => {
-    if (fabric && set.fabricSlug !== fabric) return false;
-    if (color && !set.card.colors.some((option) => option.name === color)) return false;
+  const listed = items.filter((item) => {
+    if (fabric && item.fabricSlug !== fabric) return false;
+    if (color && !item.card.colors.some((option) => option.name === color)) return false;
     return true;
   });
 
   return {
-    products: sortSetCards(listed, sort).map((set) => set.card),
+    products: sortListingItems(listed, sort).map((item) => item.card),
     filters,
     activeFilters: { color, fabric, sort },
     cloudName,
