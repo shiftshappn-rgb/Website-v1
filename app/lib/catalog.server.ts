@@ -217,22 +217,32 @@ export async function loadShopListing(opts: {
     ? sets.filter((set) => set.audience === opts.categorySlug)
     : sets;
 
-  // Shop all mixes scrub sets with accessories / underscrubs (sold individually).
-  // Women/Men PLPs stay set-only.
-  const accessoryRows =
-    opts.categorySlug
-      ? []
-      : await db.product.findMany({
-          where: {
-            status: "active",
-            category: { slug: ACCESSORIES_CATEGORY_SLUG },
+  // Scrub tops/pants sell as sets only. Underscrubs + accessories sell as products.
+  // Shop all: sets + accessories + all underscrubs.
+  // Women/Men: audience sets + that audience's underscrubs.
+  const standaloneProducts = await db.product.findMany({
+    where: {
+      status: "active",
+      OR: [
+        ...(opts.categorySlug
+          ? []
+          : [{ category: { slug: ACCESSORIES_CATEGORY_SLUG } }]),
+        {
+          category: {
+            slug: { endsWith: "-underscrub" },
+            ...(opts.categorySlug
+              ? { parent: { slug: opts.categorySlug } }
+              : {}),
           },
-          select: {
-            ...productCardSelect,
-            createdAt: true,
-          },
-          orderBy: { name: "asc" },
-        });
+        },
+      ],
+    },
+    select: {
+      ...productCardSelect,
+      createdAt: true,
+    },
+    orderBy: { name: "asc" },
+  });
 
   const items: ListingItem[] = [
     ...inAudience.map((set) => ({
@@ -241,7 +251,7 @@ export async function loadShopListing(opts: {
       fabricName: set.fabricName,
       card: set.card,
     })),
-    ...accessoryRows.map((product) => ({
+    ...standaloneProducts.map((product) => ({
       createdAt: product.createdAt,
       fabricSlug: product.fabricType?.slug ?? null,
       fabricName: product.fabricType?.name ?? null,
