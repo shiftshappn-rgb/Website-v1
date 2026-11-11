@@ -1,5 +1,6 @@
 import type { Route } from "./+types/blog-post";
 import { Link, data } from "react-router";
+import { RichTextHtml } from "~/components/storefront/RichTextHtml";
 import { isDatabaseAvailable, tryDb } from "~/db.server";
 import { buildMeta, JsonLd, blogPostingJsonLd } from "~/lib/seo";
 
@@ -89,10 +90,7 @@ export default function BlogPost({ loaderData }: Route.ComponentProps) {
           </div>
         )}
 
-        <div
-          className="prose-brand"
-          dangerouslySetInnerHTML={{ __html: post.bodyRichText }}
-        />
+        <RichTextHtml html={post.bodyRichText} />
 
         {post.tags.length > 0 && (
           <div className="mt-10 flex flex-wrap gap-2">

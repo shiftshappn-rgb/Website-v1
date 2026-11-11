@@ -6,8 +6,7 @@ import { cn } from "~/lib/utils";
 const menuLinks = [
   { label: "Home", href: "/" },
   { label: "Shop", href: "/shop" },
-  { label: "Women", href: "/shop/women" },
-  { label: "Men", href: "/shop/men" },
+  { label: "Underscrubs", href: "/shop/underscrubs" },
   { label: "ShiftKnit", href: "/shiftknit" },
   { label: "Bundles", href: "/shop/bundles" },
   { label: "Accessories", href: "/shop/accessories" },

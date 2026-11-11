@@ -3,7 +3,9 @@ import type { Route } from "./+types/admin-blog-edit";
 import { Button } from "~/components/ui/Button";
 import { Input, Select, Textarea } from "~/components/ui/Input";
 import { DatabaseUnavailable } from "~/components/admin/DatabaseUnavailable";
+import { RichTextEditor } from "~/components/admin/RichTextEditor";
 import { db, isDatabaseAvailable } from "~/db.server";
+import { normalizeRichTextForStorage } from "~/lib/rich-text";
 import { slugify } from "~/lib/utils";
 import { requireAdmin } from "~/lib/session.server";
 import type { BlogStatus } from "@prisma/client";
@@ -48,7 +50,9 @@ export async function action({ request, params }: Route.ActionArgs) {
   const title = String(formData.get("title") ?? "").trim();
   const slug = String(formData.get("slug") ?? "").trim() || slugify(title);
   const excerpt = String(formData.get("excerpt") ?? "").trim() || null;
-  const bodyRichText = String(formData.get("bodyRichText") ?? "").trim();
+  const bodyRichText = normalizeRichTextForStorage(
+    String(formData.get("bodyRichText") ?? "")
+  );
   const coverImage = String(formData.get("coverImage") ?? "").trim() || null;
   const author = String(formData.get("author") ?? "").trim() || null;
   const status = String(formData.get("status") ?? "draft") as BlogStatus;
@@ -59,7 +63,7 @@ export async function action({ request, params }: Route.ActionArgs) {
     ? tagsRaw.split(",").map((t) => t.trim()).filter(Boolean)
     : [];
 
-  if (!title || !bodyRichText) {
+  if (!title || !bodyRichText || bodyRichText === "<p><br></p>" || bodyRichText === "<p></p>") {
     return { error: "Title and body are required." };
   }
 
@@ -120,7 +124,13 @@ export default function AdminBlogEdit({ loaderData, actionData }: Route.Componen
         </div>
 
         <Textarea label="Excerpt" name="excerpt" defaultValue={post.excerpt ?? ""} rows={2} className="min-h-[60px]" />
-        <Textarea label="Body" name="bodyRichText" defaultValue={post.bodyRichText} required rows={12} />
+        <RichTextEditor
+          label="Body"
+          name="bodyRichText"
+          defaultValue={post.bodyRichText}
+          required
+          minHeightClassName="min-h-[280px]"
+        />
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Input label="Cover Image URL" name="coverImage" defaultValue={post.coverImage ?? ""} />

@@ -9,6 +9,7 @@ import { CloudinaryUploadButton } from "~/components/admin/CloudinaryUploadButto
 import { AddVariantForm } from "~/components/admin/AddVariantForm";
 import { ColorGroupsEditor } from "~/components/admin/ColorGroupsEditor";
 import { DatabaseUnavailable } from "~/components/admin/DatabaseUnavailable";
+import { RichTextEditor } from "~/components/admin/RichTextEditor";
 import {
   VariantsEditor,
   type EditVariant,
@@ -27,6 +28,7 @@ import {
 import { listCatalogColors } from "~/lib/catalog-colors.server";
 import { cloudinaryImageUrl } from "~/lib/cloudinary";
 import { buildVariantSku, CATALOG_SIZES } from "~/lib/product-catalog";
+import { normalizeRichTextForStorage } from "~/lib/rich-text";
 import { requireAdmin } from "~/lib/session.server";
 import {
   normalizeVariantImages,
@@ -703,7 +705,9 @@ async function runProductEditAction(
 
   const name = String(formData.get("name") ?? "").trim();
   const slug = String(formData.get("slug") ?? "").trim() || slugify(name);
-  const description = String(formData.get("description") ?? "").trim();
+  const description = normalizeRichTextForStorage(
+    String(formData.get("description") ?? "")
+  );
   const shortDescription = String(formData.get("shortDescription") ?? "").trim() || null;
   const status = String(formData.get("status") ?? "draft") as ProductStatus;
   const basePrice = parseFloat(String(formData.get("basePrice") ?? "0"));
@@ -719,7 +723,12 @@ async function runProductEditAction(
   const lengthGuide = String(formData.get("lengthGuide") ?? "").trim() || null;
   const offerLengths = formData.get("offerLengths") === "on";
 
-  if (!name || !description) {
+  if (
+    !name ||
+    !description ||
+    description === "<p><br></p>" ||
+    description === "<p></p>"
+  ) {
     return { error: "Name and description are required." };
   }
 
@@ -936,7 +945,7 @@ export default function AdminProductsEdit({ loaderData, actionData }: Route.Comp
 
         <Card className="space-y-4">
           <h2 className="font-serif text-lg text-navy">Copy</h2>
-          <Textarea
+          <RichTextEditor
             label="Description"
             name="description"
             defaultValue={product.description}

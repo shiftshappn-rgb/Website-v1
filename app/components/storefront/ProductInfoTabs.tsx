@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Cloud, Shirt, Wind } from "lucide-react";
 import { Link } from "react-router";
+import { RichTextHtml } from "~/components/storefront/RichTextHtml";
 import { cn } from "~/lib/utils";
 
 export type ProductInfoHighlight = {
@@ -11,7 +12,10 @@ export type ProductInfoHighlight = {
 export type ProductInfoTabsProps = {
   intro?: string | null;
   note?: ReactNode;
-  features: string[];
+  /** Rich HTML description (preferred). */
+  descriptionHtml?: string | null;
+  /** Legacy plain feature lines when descriptionHtml is absent. */
+  features?: string[];
   fitSummary?: string | null;
   lengthGuide?: string | null;
   fabricName?: string | null;
@@ -43,7 +47,8 @@ function HighlightIcon({ icon }: { icon: ProductInfoHighlight["icon"] }) {
 export function ProductInfoTabs({
   intro,
   note,
-  features,
+  descriptionHtml,
+  features = [],
   fitSummary,
   lengthGuide,
   fabricName,
@@ -86,13 +91,15 @@ export function ProductInfoTabs({
           <div className="space-y-4">
             {intro ? <p>{intro}</p> : null}
             {note ? <p className="text-charcoal/65">{note}</p> : null}
-            {features.length > 0 && (
+            {descriptionHtml ? (
+              <RichTextHtml html={descriptionHtml} />
+            ) : features.length > 0 ? (
               <ul className="list-disc space-y-1.5 pl-5">
                 {features.map((line) => (
                   <li key={line}>{line}</li>
                 ))}
               </ul>
-            )}
+            ) : null}
           </div>
         )}
 

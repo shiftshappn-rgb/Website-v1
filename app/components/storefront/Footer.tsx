@@ -7,6 +7,7 @@ const shopLinks = [
   { label: "Women", href: "/shop/women" },
   { label: "Men", href: "/shop/men" },
   { label: "Shop", href: "/shop" },
+  { label: "Underscrubs", href: "/shop/underscrubs" },
   { label: "Bundles", href: "/shop/bundles" },
   { label: "Accessories", href: "/shop/accessories" },
   { label: "Shop by colour", href: "/shop/colour" },

@@ -29,6 +29,7 @@ import {
   productJsonLd,
   breadcrumbJsonLd,
 } from "~/lib/seo";
+import { richTextToPlainText } from "~/lib/rich-text";
 import { DEFAULT_LENGTH_GUIDE } from "~/lib/size-chart";
 import {
   cn,
@@ -44,7 +45,10 @@ export function meta({ loaderData }: Route.MetaArgs) {
   const { product, cloudName } = loaderData;
   return buildMeta({
     title: product.seoTitle ?? `${product.name} — shiftshappn`,
-    description: product.seoDescription ?? product.shortDescription ?? product.description.slice(0, 160),
+    description:
+      product.seoDescription ??
+      product.shortDescription ??
+      richTextToPlainText(product.description).slice(0, 160),
     image: product.seoImage
       ? cloudinaryImageUrl(product.seoImage, cloudName, 1200) ?? product.seoImage
       : undefined,
@@ -221,11 +225,6 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
   const fitLine =
     product.fitSummary?.split("\n")[0] ||
     (isAccessory ? null : "Classic fit. Runs true to size.");
-  const detailLines = product.description
-    .split("\n")
-    .map((line) => line.replace(/^[-•]\s*/, "").trim())
-    .filter(Boolean);
-
   function selectColor(colorName: string) {
     setSelectedColor(colorName);
     setSearchParams(
@@ -496,27 +495,10 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
           <div className="mt-16 max-w-3xl">
             <ProductInfoTabs
               intro={
-                (() => {
-                  const short = product.shortDescription?.trim() ?? "";
-                  const looksLikeFeatures =
-                    short.includes(" • ") || detailLines[0]?.includes(" • ");
-                  if (short && !looksLikeFeatures) return short;
-                  if (detailLines[0] && !detailLines[0].includes(" • ") && detailLines.length > 1) {
-                    return detailLines[0];
-                  }
-                  return `Built for long shifts — the ${product.name} is soft stretch with pockets that actually hold what you carry.`;
-                })()
+                product.shortDescription?.trim() ||
+                `Built for long shifts — the ${product.name} is soft stretch with pockets that actually hold what you carry.`
               }
-              features={
-                detailLines[0]?.includes(" • ")
-                  ? detailLines[0]
-                      .split("•")
-                      .map((line) => line.trim())
-                      .filter(Boolean)
-                  : detailLines.length > 1 && !detailLines[0].includes(" • ")
-                    ? detailLines.slice(1)
-                    : detailLines
-              }
+              descriptionHtml={product.description}
               fitSummary={product.fitSummary}
               lengthGuide={lengthGuide}
               fabricName={product.fabricType?.name}

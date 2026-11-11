@@ -110,6 +110,22 @@ h1, h2 {
   @apply mb-1;
 }
 
+.prose-brand u {
+  @apply underline;
+}
+
+.prose-brand s {
+  @apply line-through;
+}
+
+.prose-brand blockquote {
+  @apply my-4 border-l-4 border-charcoal/20 pl-4 italic text-charcoal/80;
+}
+
+.prose-brand img {
+  @apply my-4 max-h-[28rem] w-auto max-w-full rounded-xl;
+}
+
 .prose-brand table {
   @apply mb-6 w-full text-sm;
 }

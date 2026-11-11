@@ -3,6 +3,7 @@ import type { Route } from "./+types/admin-products-new";
 import { Button } from "~/components/ui/Button";
 import { Input, Select, Textarea } from "~/components/ui/Input";
 import { DatabaseUnavailable } from "~/components/admin/DatabaseUnavailable";
+import { RichTextEditor } from "~/components/admin/RichTextEditor";
 import { db, isDatabaseAvailable } from "~/db.server";
 import {
   ACCESSORY_DEFAULT_COLOR,
@@ -15,6 +16,7 @@ import {
   productCategorySelectOptions,
 } from "~/lib/categories";
 import { buildVariantSku } from "~/lib/product-catalog";
+import { normalizeRichTextForStorage } from "~/lib/rich-text";
 import { slugify } from "~/lib/utils";
 import { requireAdmin } from "~/lib/session.server";
 import type { ProductStatus } from "@prisma/client";
@@ -57,7 +59,9 @@ export async function action({ request }: Route.ActionArgs) {
   const formData = await request.formData();
   const name = String(formData.get("name") ?? "").trim();
   const slug = String(formData.get("slug") ?? "").trim() || slugify(name);
-  const description = String(formData.get("description") ?? "").trim();
+  const description = normalizeRichTextForStorage(
+    String(formData.get("description") ?? "")
+  );
   const shortDescription = String(formData.get("shortDescription") ?? "").trim() || null;
   const status = String(formData.get("status") ?? "draft") as ProductStatus;
   const basePrice = parseFloat(String(formData.get("basePrice") ?? "0"));
@@ -73,7 +77,12 @@ export async function action({ request }: Route.ActionArgs) {
   const lengthGuide = String(formData.get("lengthGuide") ?? "").trim() || null;
   const offerLengths = formData.get("offerLengths") === "on";
 
-  if (!name || !description) {
+  if (
+    !name ||
+    !description ||
+    description === "<p><br></p>" ||
+    description === "<p></p>"
+  ) {
     return { error: "Name and description are required." };
   }
 
@@ -179,7 +188,7 @@ export default function AdminProductsNew({ loaderData, actionData }: Route.Compo
           <Input label="Slug" name="slug" placeholder="auto-generated from name" />
         </div>
 
-        <Textarea label="Description" name="description" required />
+        <RichTextEditor label="Description" name="description" required />
         <Textarea label="Short Description" name="shortDescription" rows={3} className="min-h-[80px]" />
         <Textarea label="Fit" name="fitSummary" rows={3} className="min-h-[80px]" />
         <Textarea label="Care instructions" name="careInstructions" rows={3} className="min-h-[80px]" />

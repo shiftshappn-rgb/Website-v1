@@ -1,6 +1,5 @@
 import type { Route } from "./+types/shop-women";
-import { ProductGrid } from "~/components/storefront/ProductCard";
-import { ShopFilters } from "~/components/storefront/ShopFilters";
+import { ShopListingPage } from "~/components/storefront/ShopListingPage";
 import { loadShopListing } from "~/lib/catalog.server";
 import { catalogHeaders } from "~/lib/http-cache";
 import { buildMeta } from "~/lib/seo";
@@ -8,7 +7,7 @@ import { buildMeta } from "~/lib/seo";
 export function meta({}: Route.MetaArgs) {
   return buildMeta({
     title: "Women's scrubs — shiftshappn",
-    description: "Shop women's medical scrubs designed for comfort and style.",
+    description: "Shop women's scrub sets and underscrubs designed for comfort and style.",
     path: "/shop/women",
   });
 }
@@ -31,19 +30,15 @@ export default function ShopWomen({ loaderData }: Route.ComponentProps) {
   const { products, filters, activeFilters, cloudName } = loaderData;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 lg:py-14">
-      <header className="mb-2">
-        <h1 className="text-3xl lg:text-4xl font-serif text-navy">Women</h1>
-        <p className="mt-2 text-charcoal/70">
-          {products.length} {products.length === 1 ? "set" : "sets"}
-        </p>
-      </header>
-      <ShopFilters
-        colors={filters.colors}
-        fabrics={filters.fabrics}
-        activeFilters={activeFilters}
-      />
-      <ProductGrid products={products} cloudName={cloudName} />
-    </div>
+    <ShopListingPage
+      title="Women"
+      eyebrow="Women’s shop"
+      description="Soft stretch sets and underscrubs built for long shifts — pockets that actually hold what you carry."
+      countLabel={`${products.length} ${products.length === 1 ? "product" : "products"}`}
+      products={products}
+      cloudName={cloudName}
+      filters={filters}
+      activeFilters={activeFilters}
+    />
   );
 }
