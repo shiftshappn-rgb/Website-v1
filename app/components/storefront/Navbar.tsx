@@ -19,9 +19,8 @@ const SearchDrawer = lazy(() =>
 );
 
 const navLinks = [
-  { label: "Women", href: "/shop/women" },
-  { label: "Men", href: "/shop/men" },
   { label: "Shop", href: "/shop" },
+  { label: "Underscrubs", href: "/shop/underscrubs" },
   { label: "Bundles", href: "/shop/bundles" },
   { label: "Accessories", href: "/shop/accessories" },
 ];

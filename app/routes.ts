@@ -16,6 +16,7 @@ export default [
       route("colour", "routes/shop-colour.tsx"),
       route("fabric", "routes/shop-fabric.tsx"),
       route("accessories", "routes/shop-accessories.tsx"),
+      route("underscrubs", "routes/shop-underscrubs.tsx"),
       route("bundles", "routes/shop-bundles.tsx"),
     ]),
     route("products/:slug", "routes/product-detail.tsx"),

@@ -36,12 +36,13 @@ function FilterLink({
       to={to}
       prefetch="intent"
       className={cn(
-        "inline-flex min-h-10 items-center gap-2 rounded-full border px-3 py-2 text-sm transition-colors",
+        "inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full border px-3 py-2 text-sm transition-colors duration-200",
         active
           ? "border-navy bg-navy text-white"
           : "border-charcoal/15 bg-white text-charcoal hover:border-navy",
         className
       )}
+      aria-current={active ? "true" : undefined}
     >
       {children}
     </Link>
@@ -65,10 +66,13 @@ export function ShopFilters({
   colors,
   fabrics,
   activeFilters,
+  embedded = false,
 }: {
   colors: ShopColorFilter[];
   fabrics: ShopFabricFilter[];
   activeFilters: ShopActiveFilters;
+  /** When true, omit the outer top border (used inside ShopListingPage panel). */
+  embedded?: boolean;
 }) {
   const [searchParams] = useSearchParams();
   const [open, setOpen] = useState(false);
@@ -78,15 +82,16 @@ export function ShopFilters({
   const activeCount = [activeFilters.color, activeFilters.fabric].filter(Boolean).length;
 
   return (
-    <div className="mb-8 border-t border-charcoal/10 pt-5">
+    <div className={cn(!embedded && "mb-8 border-t border-charcoal/10 pt-5")}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button
           type="button"
           onClick={() => setOpen((prev) => !prev)}
-          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-charcoal/15 bg-white px-3.5 py-2 text-sm font-medium text-charcoal lg:hidden"
+          className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full border border-charcoal/15 bg-white px-3.5 py-2 text-sm font-medium text-charcoal transition-colors hover:border-navy/40 lg:hidden"
           aria-expanded={open}
+          aria-controls="shop-filter-panel"
         >
-          <SlidersHorizontal size={16} />
+          <SlidersHorizontal size={16} aria-hidden />
           Filter
           {activeCount > 0 && (
             <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-navy px-1.5 text-[11px] font-semibold text-white">
@@ -99,13 +104,16 @@ export function ShopFilters({
         </div>
       </div>
 
-      <div className={cn("mt-5 space-y-5", open ? "block" : "hidden lg:block")}>
+      <div
+        id="shop-filter-panel"
+        className={cn("mt-5 space-y-5", open ? "block" : "hidden lg:block")}
+      >
         {colors.length > 0 && (
           <div>
             <p className="mb-2.5 text-xs font-semibold uppercase tracking-[0.16em] text-charcoal/50">
               Colour
             </p>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2" role="list">
               <FilterLink
                 to={buildFilterHref(searchParams, { color: null })}
                 active={!activeFilters.color}
@@ -165,7 +173,8 @@ export function ShopFilters({
             <Link
               to={buildFilterHref(searchParams, { color: null })}
               prefetch="intent"
-              className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-sand px-2.5 py-1.5 text-sm text-charcoal"
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-sand px-2.5 py-1.5 text-sm text-charcoal transition-colors hover:bg-stone"
+              aria-label={`Remove ${activeColor.name} colour filter`}
             >
               <span
                 className="h-2.5 w-2.5 rounded-full border border-charcoal/15"
@@ -173,23 +182,24 @@ export function ShopFilters({
                 aria-hidden
               />
               {activeColor.name}
-              <X size={14} className="text-charcoal/50" />
+              <X size={14} className="text-charcoal/50" aria-hidden />
             </Link>
           )}
           {activeFabric && (
             <Link
               to={buildFilterHref(searchParams, { fabric: null })}
               prefetch="intent"
-              className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-sand px-2.5 py-1.5 text-sm text-charcoal"
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-sand px-2.5 py-1.5 text-sm text-charcoal transition-colors hover:bg-stone"
+              aria-label={`Remove ${activeFabric.name} fabric filter`}
             >
               {activeFabric.name}
-              <X size={14} className="text-charcoal/50" />
+              <X size={14} className="text-charcoal/50" aria-hidden />
             </Link>
           )}
           <Link
             to={buildFilterHref(searchParams, { color: null, fabric: null })}
             prefetch="intent"
-            className="text-sm font-medium text-navy hover:text-terracotta"
+            className="text-sm font-medium text-navy transition-colors hover:text-terracotta"
           >
             Clear all
           </Link>

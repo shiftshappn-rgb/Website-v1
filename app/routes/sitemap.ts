@@ -19,6 +19,7 @@ export async function loader({}: Route.LoaderArgs) {
     "/shop/colour",
     "/shop/fabric",
     "/shop/accessories",
+    "/shop/underscrubs",
     "/shop/bundles",
     "/blog",
     "/about",

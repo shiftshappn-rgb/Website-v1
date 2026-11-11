@@ -1,6 +1,5 @@
 import type { Route } from "./+types/shop-index";
-import { ProductGrid } from "~/components/storefront/ProductCard";
-import { ShopFilters } from "~/components/storefront/ShopFilters";
+import { ShopListingPage } from "~/components/storefront/ShopListingPage";
 import { loadShopListing } from "~/lib/catalog.server";
 import { catalogHeaders } from "~/lib/http-cache";
 import { buildMeta } from "~/lib/seo";
@@ -8,7 +7,8 @@ import { buildMeta } from "~/lib/seo";
 export function meta({}: Route.MetaArgs) {
   return buildMeta({
     title: "Shop all — shiftshappn",
-    description: "Browse all premium medical scrubs from shiftshappn.",
+    description:
+      "Browse scrub sets, underscrubs, and accessories — soft stretch, Canadian made.",
     path: "/shop",
   });
 }
@@ -30,19 +30,14 @@ export default function ShopIndex({ loaderData }: Route.ComponentProps) {
   const { products, filters, activeFilters, cloudName } = loaderData;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 lg:py-14">
-      <header className="mb-2">
-        <h1 className="text-3xl lg:text-4xl font-serif text-navy">Shop all</h1>
-        <p className="mt-2 text-charcoal/70">
-          {products.length} {products.length === 1 ? "product" : "products"}
-        </p>
-      </header>
-      <ShopFilters
-        colors={filters.colors}
-        fabrics={filters.fabrics}
-        activeFilters={activeFilters}
-      />
-      <ProductGrid products={products} cloudName={cloudName} />
-    </div>
+    <ShopListingPage
+      title="Shop all"
+      description="Sets for the floor, underscrubs underneath, and the extras that round out a shift."
+      countLabel={`${products.length} ${products.length === 1 ? "product" : "products"}`}
+      products={products}
+      cloudName={cloudName}
+      filters={filters}
+      activeFilters={activeFilters}
+    />
   );
 }

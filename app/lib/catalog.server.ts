@@ -194,6 +194,8 @@ export type ShopListingResult = {
 
 export async function loadShopListing(opts: {
   categorySlug?: string;
+  /** When true, list underscrub products only (no sets / accessories). */
+  underscrubsOnly?: boolean;
   color?: string | null;
   fabric?: string | null;
   sort?: string;
@@ -211,6 +213,55 @@ export async function loadShopListing(opts: {
 
   const db = tryDb();
   if (!db) return empty;
+
+  if (opts.underscrubsOnly) {
+    const underscrubs = await db.product.findMany({
+      where: {
+        status: "active",
+        category: {
+          slug: { endsWith: "-underscrub" },
+          ...(opts.categorySlug ? { parent: { slug: opts.categorySlug } } : {}),
+        },
+      },
+      select: {
+        ...productCardSelect,
+        createdAt: true,
+      },
+      orderBy: { name: "asc" },
+    });
+
+    const items: ListingItem[] = underscrubs.map((product) => ({
+      createdAt: product.createdAt,
+      fabricSlug: product.fabricType?.slug ?? null,
+      fabricName: product.fabricType?.name ?? null,
+      card: serializeProductForCard(product),
+    }));
+
+    const filters = deriveFilters(
+      items.map((item) => ({
+        fabricType:
+          item.fabricSlug && item.fabricName
+            ? { slug: item.fabricSlug, name: item.fabricName }
+            : null,
+        variants: item.card.colors.map((colorOption) => ({
+          colorName: colorOption.name,
+          colorHex: colorOption.hex,
+        })),
+      }))
+    );
+    const listed = items.filter((item) => {
+      if (fabric && item.fabricSlug !== fabric) return false;
+      if (color && !item.card.colors.some((option) => option.name === color)) return false;
+      return true;
+    });
+
+    return {
+      products: sortListingItems(listed, sort).map((item) => item.card),
+      filters,
+      activeFilters: { color, fabric, sort },
+      cloudName,
+    };
+  }
 
   const sets = await loadSetCards(db);
   const inAudience = opts.categorySlug
