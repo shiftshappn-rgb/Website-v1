@@ -96,50 +96,66 @@ export async function action({ request }: Route.ActionArgs) {
   if (categoryId && (!category || !isAssignableProductCategory(category))) {
     return {
       error:
-        "Choose a piece category under Women or Men (Scrub Tops / Scrub Pants), or Accessories.",
+        "Choose a piece category under Women or Men (Scrub Tops / Scrub Pants), Underscrubs, or Accessories.",
     };
   }
 
-  const product = await db.product.create({
-    data: {
-      name,
-      slug,
-      description,
-      shortDescription,
-      status,
-      basePrice,
-      compareAtPrice,
-      categoryId,
-      fabricTypeId,
-      seoTitle,
-      seoDescription,
-      seoImage,
-      fitSummary,
-      careInstructions,
-      lengthGuide,
-      offerLengths: isAccessoriesCategory(category) ? false : offerLengths,
-      ...(isAccessoriesCategory(category)
-        ? {
-            variants: {
-              create: {
-                colorName: ACCESSORY_DEFAULT_COLOR,
-                colorHex: ACCESSORY_DEFAULT_COLOR_HEX,
-                size: ACCESSORY_DEFAULT_SIZE,
-                sku: buildVariantSku(
-                  slug,
-                  ACCESSORY_DEFAULT_COLOR,
-                  ACCESSORY_DEFAULT_SIZE
-                ),
-                inventoryQty: 0,
-                images: [],
-              },
-            },
-          }
-        : {}),
-    },
-  });
+  if (compareAtPrice != null && Number.isNaN(compareAtPrice)) {
+    return { error: "Compare-at price must be a valid number." };
+  }
 
-  return redirect(`/admin/products/${product.id}`);
+  const isAccessory = isAccessoriesCategory(category);
+
+  try {
+    // Neon HTTP (Vercel) rejects nested writes — create product, then variant.
+    const product = await db.product.create({
+      data: {
+        name,
+        slug,
+        description,
+        shortDescription,
+        status,
+        basePrice,
+        compareAtPrice,
+        categoryId,
+        fabricTypeId,
+        seoTitle,
+        seoDescription,
+        seoImage,
+        fitSummary,
+        careInstructions,
+        lengthGuide,
+        offerLengths: isAccessory ? false : offerLengths,
+      },
+    });
+
+    if (isAccessory) {
+      await db.productVariant.create({
+        data: {
+          productId: product.id,
+          colorName: ACCESSORY_DEFAULT_COLOR,
+          colorHex: ACCESSORY_DEFAULT_COLOR_HEX,
+          size: ACCESSORY_DEFAULT_SIZE,
+          sku: buildVariantSku(
+            slug,
+            ACCESSORY_DEFAULT_COLOR,
+            ACCESSORY_DEFAULT_SIZE
+          ),
+          inventoryQty: 0,
+          images: [],
+        },
+      });
+    }
+
+    return redirect(`/admin/products/${product.id}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("Unique constraint") || message.includes("P2002")) {
+      return { error: "A product or SKU with this slug already exists." };
+    }
+    console.error("admin-products-new create failed", error);
+    return { error: "Could not create product. Please try again." };
+  }
 }
 
 export default function AdminProductsNew({ loaderData, actionData }: Route.ComponentProps) {
