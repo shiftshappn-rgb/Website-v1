@@ -29,6 +29,19 @@ export function isProbablyHtml(value: string): boolean {
   return /<\/?[a-z][\s\S]*>/i.test(value.trim());
 }
 
+/** True when HTML has no meaningful text/images (e.g. empty `<p><br></p>`). */
+export function isRichTextEmpty(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  if (/<img\b/i.test(trimmed)) return false;
+  return richTextToPlainText(trimmed).length === 0;
+}
+
+/** Safe http(s)/mailto/relative URLs for editor link + image prompts. */
+export function isSafeRichTextUrl(value: string, kind: "href" | "src"): boolean {
+  return isSafeUrl(value, kind);
+}
+
 function isSafeUrl(value: string | undefined, kind: "href" | "src"): boolean {
   if (!value) return false;
   const trimmed = value.trim();

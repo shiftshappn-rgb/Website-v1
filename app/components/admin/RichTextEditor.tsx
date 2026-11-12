@@ -5,6 +5,8 @@ import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { ListPlugin } from "@lexical/react/LexicalListPlugin";
 import { LinkPlugin } from "@lexical/react/LexicalLinkPlugin";
+import { AutoLinkPlugin } from "@lexical/react/LexicalAutoLinkPlugin";
+import { MarkdownShortcutPlugin } from "@lexical/react/LexicalMarkdownShortcutPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
@@ -13,10 +15,15 @@ import {
   $getRoot,
   $getSelection,
   $isRangeSelection,
+  COMMAND_PRIORITY_NORMAL,
   FORMAT_TEXT_COMMAND,
+  HISTORY_MERGE_TAG,
+  KEY_MODIFIER_COMMAND,
   REDO_COMMAND,
   UNDO_COMMAND,
   type EditorState,
+  type Klass,
+  type LexicalNode,
 } from "lexical";
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from "@lexical/html";
 import {
@@ -34,34 +41,97 @@ import {
   ListNode,
   REMOVE_LIST_COMMAND,
 } from "@lexical/list";
-import { $isLinkNode, LinkNode, TOGGLE_LINK_COMMAND } from "@lexical/link";
+import {
+  $isLinkNode,
+  AutoLinkNode,
+  LinkNode,
+  TOGGLE_LINK_COMMAND,
+  autoLinkEmailMatcher,
+  autoLinkUrlMatcher,
+} from "@lexical/link";
+import {
+  BOLD_STAR,
+  BOLD_UNDERSCORE,
+  HEADING,
+  ITALIC_STAR,
+  ITALIC_UNDERSCORE,
+  LINK,
+  ORDERED_LIST,
+  QUOTE,
+  STRIKETHROUGH,
+  UNORDERED_LIST,
+  type Transformer,
+} from "@lexical/markdown";
 import { $setBlocksType } from "@lexical/selection";
 import { $findMatchingParent, $getNearestNodeOfType } from "@lexical/utils";
-import { $createImageNode, ImageNode } from "~/components/admin/lexical/ImageNode";
-import { isProbablyHtml, plainTextToRichHtml } from "~/lib/rich-text";
+import {
+  ImageNode,
+  ImagesPlugin,
+  INSERT_IMAGE_COMMAND,
+} from "~/components/admin/lexical/ImageNode";
+import {
+  isProbablyHtml,
+  isRichTextEmpty,
+  isSafeRichTextUrl,
+  plainTextToRichHtml,
+} from "~/lib/rich-text";
 import { cn } from "~/lib/utils";
 
-function theme() {
-  return {
-    paragraph: "mb-2",
-    quote: "border-l-4 border-charcoal/20 pl-3 italic text-charcoal/80 my-2",
-    heading: {
-      h2: "text-xl font-serif text-navy mt-3 mb-2",
-      h3: "text-lg font-serif text-navy mt-2 mb-1",
-    },
-    list: {
-      ul: "list-disc pl-5 mb-2",
-      ol: "list-decimal pl-5 mb-2",
-      listitem: "mb-1",
-    },
-    link: "text-navy underline underline-offset-2",
-    text: {
-      bold: "font-semibold",
-      italic: "italic",
-      underline: "underline",
-      strikethrough: "line-through",
-    },
-  };
+const EDITOR_NAMESPACE_PREFIX = "rich-text";
+
+const EDITOR_THEME = {
+  paragraph: "mb-2",
+  quote: "border-l-4 border-charcoal/20 pl-3 italic text-charcoal/80 my-2",
+  heading: {
+    h1: "text-2xl font-serif text-navy mt-3 mb-2",
+    h2: "text-xl font-serif text-navy mt-3 mb-2",
+    h3: "text-lg font-serif text-navy mt-2 mb-1",
+    h4: "text-base font-serif text-navy mt-2 mb-1",
+    h5: "text-sm font-serif text-navy mt-2 mb-1",
+    h6: "text-sm font-serif text-navy mt-2 mb-1",
+  },
+  list: {
+    ul: "list-disc pl-5 mb-2",
+    ol: "list-decimal pl-5 mb-2",
+    listitem: "mb-1",
+  },
+  link: "text-navy underline underline-offset-2",
+  text: {
+    bold: "font-semibold",
+    italic: "italic",
+    underline: "underline",
+    strikethrough: "line-through",
+  },
+};
+
+const EDITOR_NODES: Array<Klass<LexicalNode>> = [
+  HeadingNode,
+  QuoteNode,
+  ListNode,
+  ListItemNode,
+  LinkNode,
+  AutoLinkNode,
+  ImageNode,
+];
+
+const MARKDOWN_TRANSFORMERS: Transformer[] = [
+  HEADING,
+  QUOTE,
+  UNORDERED_LIST,
+  ORDERED_LIST,
+  BOLD_STAR,
+  BOLD_UNDERSCORE,
+  ITALIC_STAR,
+  ITALIC_UNDERSCORE,
+  STRIKETHROUGH,
+  LINK,
+];
+
+const AUTO_LINK_MATCHERS = [autoLinkUrlMatcher, autoLinkEmailMatcher];
+
+function onEditorError(error: Error) {
+  console.error(error);
+  throw error;
 }
 
 function InitialContentPlugin({ html }: { html: string }) {
@@ -75,18 +145,21 @@ function InitialContentPlugin({ html }: { html: string }) {
         ? html
         : plainTextToRichHtml(html)
       : "";
-    editor.update(() => {
-      const root = $getRoot();
-      root.clear();
-      if (!source) {
-        root.append($createParagraphNode());
-        return;
-      }
-      const parser = new DOMParser();
-      const dom = parser.parseFromString(source, "text/html");
-      const nodes = $generateNodesFromDOM(editor, dom);
-      root.append(...nodes);
-    });
+    editor.update(
+      () => {
+        const root = $getRoot();
+        root.clear();
+        if (!source) {
+          root.append($createParagraphNode());
+          return;
+        }
+        const parser = new DOMParser();
+        const dom = parser.parseFromString(source, "text/html");
+        const nodes = $generateNodesFromDOM(editor, dom);
+        root.append(...nodes);
+      },
+      { tag: HISTORY_MERGE_TAG }
+    );
     setDone(true);
   }, [done, editor, html]);
 
@@ -98,14 +171,60 @@ function HtmlSyncPlugin({ onHtmlChange }: { onHtmlChange: (html: string) => void
 
   return (
     <OnChangePlugin
+      ignoreSelectionChange
       onChange={(editorState: EditorState) => {
         editorState.read(() => {
           const html = $generateHtmlFromNodes(editor, null);
-          onHtmlChange(html);
+          onHtmlChange(isRichTextEmpty(html) ? "" : html);
         });
       }}
     />
   );
+}
+
+function LinkShortcutPlugin() {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    return editor.registerCommand(
+      KEY_MODIFIER_COMMAND,
+      (event: KeyboardEvent) => {
+        if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k") {
+          return false;
+        }
+        event.preventDefault();
+
+        let hasLink = false;
+        let hasRange = false;
+        editor.getEditorState().read(() => {
+          const selection = $getSelection();
+          if (!$isRangeSelection(selection)) return;
+          hasRange = true;
+          hasLink = Boolean(
+            $findMatchingParent(selection.anchor.getNode(), $isLinkNode)
+          );
+        });
+        if (!hasRange) return true;
+
+        if (hasLink) {
+          editor.dispatchCommand(TOGGLE_LINK_COMMAND, null);
+          return true;
+        }
+
+        const url = window.prompt("Link URL", "https://");
+        if (!url?.trim()) return true;
+        if (!isSafeRichTextUrl(url.trim(), "href")) {
+          window.alert("Use an http(s), mailto, or site-relative URL.");
+          return true;
+        }
+        editor.dispatchCommand(TOGGLE_LINK_COMMAND, url.trim());
+        return true;
+      },
+      COMMAND_PRIORITY_NORMAL
+    );
+  }, [editor]);
+
+  return null;
 }
 
 function ToolbarPlugin() {
@@ -173,31 +292,36 @@ function ToolbarPlugin() {
   }
 
   function toggleLink() {
+    let hasRange = false;
     editor.getEditorState().read(() => {
-      const selection = $getSelection();
-      if (!$isRangeSelection(selection)) return;
-      if (formats.link) {
-        editor.dispatchCommand(TOGGLE_LINK_COMMAND, null);
-        return;
-      }
-      const url = window.prompt("Link URL", "https://");
-      if (!url) return;
-      editor.dispatchCommand(TOGGLE_LINK_COMMAND, url);
+      hasRange = $isRangeSelection($getSelection());
     });
+    if (!hasRange) return;
+
+    if (formats.link) {
+      editor.dispatchCommand(TOGGLE_LINK_COMMAND, null);
+      return;
+    }
+    const url = window.prompt("Link URL", "https://");
+    if (!url?.trim()) return;
+    if (!isSafeRichTextUrl(url.trim(), "href")) {
+      window.alert("Use an http(s), mailto, or site-relative URL.");
+      return;
+    }
+    editor.dispatchCommand(TOGGLE_LINK_COMMAND, url.trim());
   }
 
   function insertImage() {
     const src = window.prompt("Image URL", "https://");
     if (!src?.trim()) return;
+    if (!isSafeRichTextUrl(src.trim(), "src")) {
+      window.alert("Use an http(s), site-relative, or data:image URL.");
+      return;
+    }
     const altText = window.prompt("Alt text (optional)", "") ?? "";
-    editor.update(() => {
-      const selection = $getSelection();
-      const image = $createImageNode({ src: src.trim(), altText });
-      if ($isRangeSelection(selection)) {
-        selection.insertNodes([image]);
-      } else {
-        $getRoot().append(image);
-      }
+    editor.dispatchCommand(INSERT_IMAGE_COMMAND, {
+      src: src.trim(),
+      altText,
     });
   }
 
@@ -211,9 +335,9 @@ function ToolbarPlugin() {
         }
       });
       $setBlocksType(selection, () => $createParagraphNode());
-      editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
-      editor.dispatchCommand(TOGGLE_LINK_COMMAND, null);
     });
+    editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
+    editor.dispatchCommand(TOGGLE_LINK_COMMAND, null);
   }
 
   return (
@@ -303,7 +427,7 @@ function ToolbarPlugin() {
         1.
       </ToolbarButton>
       <span className="mx-1 w-px self-stretch bg-charcoal/15" />
-      <ToolbarButton label="Link" active={formats.link} onClick={toggleLink}>
+      <ToolbarButton label="Link (⌘K)" active={formats.link} onClick={toggleLink}>
         Link
       </ToolbarButton>
       <ToolbarButton label="Image" onClick={insertImage}>
@@ -372,19 +496,11 @@ export function RichTextEditor({
   const [html, setHtml] = useState(defaultValue);
   const initialConfig = useMemo(
     () => ({
-      namespace: `rich-text-${name}`,
-      theme: theme(),
-      onError(error: Error) {
-        console.error(error);
-      },
-      nodes: [
-        HeadingNode,
-        QuoteNode,
-        ListNode,
-        ListItemNode,
-        LinkNode,
-        ImageNode,
-      ],
+      namespace: `${EDITOR_NAMESPACE_PREFIX}-${name}`,
+      theme: EDITOR_THEME,
+      editable: true,
+      onError: onEditorError,
+      nodes: EDITOR_NODES,
     }),
     [name]
   );
@@ -413,7 +529,7 @@ export function RichTextEditor({
               }
               placeholder={
                 <div className="pointer-events-none absolute left-4 top-3 text-sm text-charcoal/40">
-                  Write here…
+                  Write here… Use Markdown shortcuts like #, -, or **bold**.
                 </div>
               }
               ErrorBoundary={LexicalErrorBoundary}
@@ -421,7 +537,14 @@ export function RichTextEditor({
           </div>
           <HistoryPlugin />
           <ListPlugin />
-          <LinkPlugin />
+          <LinkPlugin
+            validateUrl={(url) => isSafeRichTextUrl(url, "href")}
+            attributes={{ target: "_blank", rel: "noopener noreferrer" }}
+          />
+          <AutoLinkPlugin matchers={AUTO_LINK_MATCHERS} />
+          <MarkdownShortcutPlugin transformers={MARKDOWN_TRANSFORMERS} />
+          <ImagesPlugin />
+          <LinkShortcutPlugin />
           <InitialContentPlugin html={defaultValue} />
           <HtmlSyncPlugin onHtmlChange={setHtml} />
         </LexicalComposer>
