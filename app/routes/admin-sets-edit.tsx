@@ -4,6 +4,7 @@ import { DatabaseUnavailable } from "~/components/admin/DatabaseUnavailable";
 import { SetForm } from "~/components/admin/SetForm";
 import { Button } from "~/components/ui/Button";
 import { isDatabaseAvailable } from "~/db.server";
+import { normalizeRichTextForStorage } from "~/lib/rich-text";
 import {
   deleteSet,
   getAdminSet,
@@ -50,7 +51,8 @@ export async function action({ request, params }: Route.ActionArgs) {
 
   const name = String(formData.get("name") ?? "").trim();
   const slug = String(formData.get("slug") ?? "").trim() || slugify(name);
-  const description = String(formData.get("description") ?? "").trim() || null;
+  const description =
+    normalizeRichTextForStorage(String(formData.get("description") ?? "")) || null;
   const discountType =
     String(formData.get("discountType") ?? "fixed") === "percent" ? "percent" : "fixed";
   const discountValue = Number(formData.get("discountValue") ?? 0);
