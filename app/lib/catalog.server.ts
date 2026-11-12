@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { ACCESSORIES_CATEGORY_SLUG } from "~/lib/accessories";
 import { tryDb } from "~/db.server";
+import { richTextToPlainText } from "~/lib/rich-text";
 import { serializeProductForCard } from "~/lib/serialize.server";
 import type { ProductCardData } from "~/lib/serialize";
 import { piecePrices } from "~/lib/sets";
@@ -140,7 +141,9 @@ function toSetCard(
       id: bundle.id,
       slug: bundle.slug,
       name: `${bundle.name} set`,
-      shortDescription: bundle.description,
+      shortDescription: bundle.description
+        ? richTextToPlainText(bundle.description).slice(0, 160) || null
+        : null,
       basePrice: prices.total,
       compareAtPrice: prices.total < sum ? sum : null,
       colors: sharedColorList(top.variants, pants.variants),

@@ -14,6 +14,7 @@ import { dedupeReviews, serializeReview } from "~/lib/reviews";
 import { getCustomerNav } from "~/lib/session.server";
 import { customerHasVerifiedPurchase } from "~/lib/verified-purchase.server";
 import { piecePrices, sortSizes } from "~/lib/sets";
+import { isProbablyHtml, richTextToPlainText } from "~/lib/rich-text";
 import { buildMeta, breadcrumbJsonLd, JsonLd, productJsonLd } from "~/lib/seo";
 import { cloudinaryImageUrl } from "~/lib/cloudinary";
 import { serializeProductForCard } from "~/lib/serialize.server";
@@ -40,9 +41,13 @@ type Piece = {
 
 export function meta({ loaderData }: Route.MetaArgs) {
   if (!loaderData?.set) return [{ title: "Set not found — shiftshappn" }];
+  const plain =
+    loaderData.set.description != null
+      ? richTextToPlainText(loaderData.set.description).slice(0, 160)
+      : "";
   return buildMeta({
     title: `${loaderData.set.name} set — shiftshappn`,
-    description: loaderData.set.description ?? `${loaderData.set.name} scrub set`,
+    description: plain || `${loaderData.set.name} scrub set`,
     path: `/sets/${loaderData.set.slug}`,
   });
 }
@@ -394,10 +399,15 @@ export default function SetDetail({ loaderData }: Route.ComponentProps) {
               ? "Out of stock"
               : `${formatCurrency(prices.total)} · Add to bag`;
 
-  const detailLines = (set.description ?? "")
-    .split("•")
-    .map((line) => line.trim())
-    .filter(Boolean);
+  const description = set.description?.trim() ?? "";
+  const descriptionIsHtml = description ? isProbablyHtml(description) : false;
+  const legacyFeatureLines =
+    !descriptionIsHtml && description
+      ? description
+          .split("•")
+          .map((line) => line.trim())
+          .filter(Boolean)
+      : [];
 
   const ctaStyle = ctaFromHex(
     set.colors.find((color) => color.name === selectedColor)?.hex
@@ -408,7 +418,9 @@ export default function SetDetail({ loaderData }: Route.ComponentProps) {
       <JsonLd
         data={productJsonLd({
           name: `${set.name} set`,
-          description: set.description ?? `${set.name} scrub set`,
+          description:
+            (description ? richTextToPlainText(description).slice(0, 300) : "") ||
+            `${set.name} scrub set`,
           slug: set.slug,
           path: `/sets/${set.slug}`,
           price: prices.total,
@@ -568,8 +580,12 @@ export default function SetDetail({ loaderData }: Route.ComponentProps) {
               </p>
 
               <ProductInfoTabs
-                intro={`Built for long shifts — the ${set.name} set pairs a soft stretch scrub top and pants with pockets that actually hold what you carry.`}
-                features={detailLines}
+                intro={
+                  set.shortDescription?.trim() ||
+                  `Built for long shifts — the ${set.name} set pairs a soft stretch scrub top and pants with pockets that actually hold what you carry.`
+                }
+                descriptionHtml={descriptionIsHtml ? description : undefined}
+                features={legacyFeatureLines}
                 fitSummary={set.fitSummary}
                 lengthGuide={DEFAULT_LENGTH_GUIDE}
                 fabricName={set.fabricName}

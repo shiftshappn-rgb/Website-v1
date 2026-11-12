@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Form, Link } from "react-router";
+import { RichTextEditor } from "~/components/admin/RichTextEditor";
 import { Button } from "~/components/ui/Button";
-import { Input, Select, Textarea } from "~/components/ui/Input";
+import { Input, Select } from "~/components/ui/Input";
 import { piecePrices } from "~/lib/sets";
 import { formatCurrency } from "~/lib/utils";
 
@@ -95,16 +96,12 @@ export function SetForm({
             defaultValue={set?.slug}
           />
         </div>
-        <Textarea
+        <RichTextEditor
           label="Description"
           name="description"
-          rows={3}
-          className="min-h-[80px]"
           defaultValue={set?.description ?? ""}
+          minHeightClassName="min-h-[160px]"
         />
-        <p className="text-xs text-charcoal/55">
-          Use • between feature lines (shown on the set page).
-        </p>
       </section>
 
       <section className="space-y-4 rounded-xl border border-charcoal/10 bg-white p-5">
