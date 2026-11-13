@@ -10,7 +10,12 @@ import {
 import { isGoogleOAuthConfigured } from "~/lib/google-auth.server";
 import { GoogleSignInButton } from "~/components/auth/GoogleSignInButton";
 import { OrderLineGroups } from "~/components/storefront/OrderLineGroups";
-import { resolveDiscountCode, resolveGiftCard } from "~/lib/commerce.server";
+import { buildCheckoutQuote } from "~/lib/checkout-pricing.server";
+import { assertSameOrigin, rateLimit } from "~/lib/checkout-security.server";
+import {
+  hasFieldErrors,
+  validatePhase1Fields,
+} from "~/lib/checkout-validation";
 import { buildMeta } from "~/lib/seo";
 import { useCheckout } from "~/lib/checkout-context";
 import { useCart } from "~/lib/cart";
@@ -21,6 +26,7 @@ import { Button } from "~/components/ui/shadcn-button";
 import { Input as ShadInput } from "~/components/ui/shadcn-input";
 import { Badge } from "~/components/ui/shadcn-badge";
 import { computeTaxAmount, DEFAULT_TAX_RATE_PERCENT, taxLabel } from "~/lib/tax";
+import { validatePasswordStrength } from "~/lib/auth-validation";
 
 export function meta({}: Route.MetaArgs) {
   return buildMeta({
@@ -60,191 +66,137 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  const origin = assertSameOrigin(request);
+  if (!origin.ok) {
+    return data({ error: origin.error }, { status: 403 });
+  }
+
   const db = tryDb();
   if (!db) return data({ error: "Store unavailable" }, { status: 503 });
 
   const formData = await request.formData();
-
   const cartJson = String(formData.get("cart") ?? "[]");
-  let cartItems: Array<{
-    variantId: string;
-    productId: string;
-    productName: string;
-    variantLabel: string;
-    colorHex: string;
-    price: number;
-    quantity: number;
-    imagePublicId?: string;
-    imageAlt?: string;
-    kind?: "product" | "gift_card";
-    giftAmount?: number;
-    recipientEmail?: string;
-    giftNote?: string;
-    setGroupId?: string;
-    packGroupId?: string;
-  }> = [];
-
+  let cartItems: unknown = [];
   try {
     cartItems = JSON.parse(cartJson);
   } catch {
     return data({ error: "Invalid cart data" }, { status: 400 });
   }
 
-  if (!cartItems.length) return data({ error: "Cart is empty" }, { status: 400 });
-
-  const requested = new Map<string, number>();
-  for (const item of cartItems) {
-    if (item.kind === "gift_card") continue;
-    requested.set(item.variantId, (requested.get(item.variantId) ?? 0) + item.quantity);
-  }
-
-  const lineItems: Array<{
-    kind: "product" | "gift_card";
-    variantId?: string;
-    quantity: number;
-    price: number;
-    productName?: string;
-    variantLabel?: string;
-    amount?: number;
-  }> = [];
-
-  let hasGiftCards = false;
-  let hasProducts = false;
-
-  for (const item of cartItems) {
-    if (item.kind === "gift_card") {
-      hasGiftCards = true;
-      const amount = item.giftAmount ?? item.price;
-      if (!Number.isFinite(amount) || amount < 10) {
-        return data({ error: "Invalid gift card amount." }, { status: 400 });
-      }
-      lineItems.push({ kind: "gift_card", quantity: item.quantity, amount, price: amount });
-      continue;
-    }
-
-    hasProducts = true;
-    const variant = await db.productVariant.findUnique({
-      where: { id: item.variantId },
-      include: { product: true },
-    });
-
-    const inSet =
-      variant?.product.status === "archived"
-        ? await db.bundleProduct.findFirst({
-            where: { productId: variant.productId },
-            select: { productId: true },
-          })
-        : null;
-    if (!variant || (variant.product.status !== "active" && !inSet)) {
-      return data({ error: `Product unavailable: ${item.productName}` }, { status: 400 });
-    }
-    if (variant.inventoryQty < (requested.get(variant.id) ?? item.quantity)) {
-      return data(
-        { error: `Insufficient stock for ${item.productName} (${item.variantLabel})` },
-        { status: 400 }
-      );
-    }
-
-    const isGrouped = Boolean(item.packGroupId || item.setGroupId);
-    const catalogPrice = variant.priceOverride
-      ? Number(variant.priceOverride)
-      : Number(variant.product.basePrice);
-    // Bundle/set lines keep the allocated share from the cart so checkout
-    // subtotals match the discounted price shown on the PDP and in the drawer.
-    const finalPrice =
-      isGrouped && Number.isFinite(item.price) && item.price >= 0
-        ? item.price
-        : catalogPrice;
-    lineItems.push({
-      kind: "product",
-      variantId: variant.id,
-      quantity: item.quantity,
-      price: finalPrice,
-      productName: isGrouped ? item.productName : variant.product.name,
-      variantLabel: isGrouped
-        ? item.variantLabel
-        : `${variant.colorName} / ${variant.size}`,
-    });
-  }
-
-  const subtotal = lineItems.reduce((sum, item) => {
-    const price = item.kind === "gift_card" ? item.amount! : item.price;
-    return sum + price * item.quantity;
-  }, 0);
-
+  const accountChoice = String(formData.get("accountChoice") ?? "guest");
+  const emailFromForm = String(formData.get("email") ?? "");
+  const password = String(formData.get("password") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
   const discountCodeRaw = String(formData.get("discountCode") ?? "").trim().toUpperCase();
   const giftCardCodeRaw = String(formData.get("giftCardCode") ?? "").trim().toUpperCase();
 
-  let discountAmount = 0;
-  let shipping = 0;
-  const originalShipping = shipping;
+  const phase1Check = validatePhase1Fields({
+    accountChoice,
+    email: emailFromForm,
+    password,
+    name,
+    cartItems,
+  });
+  if (hasFieldErrors(phase1Check.fieldErrors)) {
+    return data(
+      {
+        error: Object.values(phase1Check.fieldErrors)[0],
+        fieldErrors: phase1Check.fieldErrors,
+      },
+      { status: 400 }
+    );
+  }
 
-  if (discountCodeRaw) {
-    const resolved = await resolveDiscountCode(db, discountCodeRaw, subtotal);
-    if ("error" in resolved) return data({ error: resolved.error }, { status: 400 });
-    if (resolved.discount.type === "free_shipping") {
-      shipping = 0;
-      discountAmount = originalShipping;
-    } else {
-      discountAmount = Math.min(
-        resolved.discount.type === "percent"
-          ? Math.round(subtotal * (Number(resolved.discount.value) / 100) * 100) / 100
-          : Number(resolved.discount.value),
-        subtotal
-      );
+  if (discountCodeRaw || giftCardCodeRaw) {
+    const limited = await rateLimit(request, "checkout-promo", {
+      limit: 30,
+      windowMs: 60_000,
+    });
+    if (!limited.ok) {
+      return data({ error: limited.error }, { status: 429 });
     }
   }
 
-  let giftCardAmount = 0;
-  if (giftCardCodeRaw && hasProducts) {
-    const resolved = await resolveGiftCard(db, giftCardCodeRaw);
-    if ("error" in resolved) return data({ error: resolved.error }, { status: 400 });
-    const merchandise = subtotal - Math.min(discountAmount, subtotal);
-    giftCardAmount = Math.min(Number(resolved.card.balance), merchandise + shipping);
+  const quoted = await buildCheckoutQuote(db, {
+    cartItems,
+    promoCode: discountCodeRaw || undefined,
+    giftCardCode: giftCardCodeRaw || undefined,
+    phase2: null,
+    email: phase1Check.email,
+  });
+  if (!quoted.ok) {
+    return data(
+      { error: quoted.error, fieldErrors: quoted.fieldErrors },
+      { status: 400 }
+    );
   }
+  const quote = quoted.quote;
 
   const sessionCustomer = await getCustomer(request);
-  const accountChoice = String(formData.get("accountChoice") ?? "guest") as
-    | "guest"
-    | "login"
-    | "register";
-  const emailFromForm = String(formData.get("email") ?? "").trim().toLowerCase();
-  const password = String(formData.get("password") ?? "");
-  const name = String(formData.get("name") ?? "").trim();
-
   let customerId: string | undefined;
-  let email = emailFromForm;
-  let resolvedAccountChoice = accountChoice;
+  let email = phase1Check.email;
+  let resolvedAccountChoice = phase1Check.accountChoice ?? "guest";
   let shouldSetSession = false;
 
   if (sessionCustomer) {
     customerId = sessionCustomer.id;
     email = sessionCustomer.email;
     resolvedAccountChoice = "login";
-  } else if (accountChoice === "login") {
-    if (!email) return data({ error: "Email is required." }, { status: 400 });
-    if (!password) return data({ error: "Password is required for login." }, { status: 400 });
+  } else if (phase1Check.accountChoice === "login") {
+    const limited = await rateLimit(request, "checkout-login", {
+      limit: 10,
+      windowMs: 60_000,
+    });
+    if (!limited.ok) {
+      return data({ error: limited.error }, { status: 429 });
+    }
     const customer = await db.customer.findUnique({ where: { email } });
-    if (!customer?.passwordHash) return data({ error: "Invalid email or password." }, { status: 401 });
+    if (!customer?.passwordHash) {
+      return data(
+        { error: "Invalid email or password.", fieldErrors: { password: "Invalid email or password." } },
+        { status: 401 }
+      );
+    }
     const valid = await verifyPassword(password, customer.passwordHash);
-    if (!valid) return data({ error: "Invalid email or password." }, { status: 401 });
+    if (!valid) {
+      return data(
+        { error: "Invalid email or password.", fieldErrors: { password: "Invalid email or password." } },
+        { status: 401 }
+      );
+    }
     customerId = customer.id;
     shouldSetSession = true;
-  } else if (accountChoice === "register") {
-    if (!email) return data({ error: "Email is required." }, { status: 400 });
-    if (!password || password.length < 8) {
-      return data({ error: "Password must be at least 8 characters." }, { status: 400 });
+  } else if (phase1Check.accountChoice === "register") {
+    const limited = await rateLimit(request, "checkout-register", {
+      limit: 5,
+      windowMs: 60_000,
+    });
+    if (!limited.ok) {
+      return data({ error: limited.error }, { status: 429 });
+    }
+    const strength = validatePasswordStrength(password);
+    if (strength) {
+      return data(
+        { error: strength, fieldErrors: { password: strength } },
+        { status: 400 }
+      );
     }
     const existing = await db.customer.findUnique({ where: { email } });
-    if (existing) return data({ error: "An account with this email already exists." }, { status: 409 });
+    if (existing) {
+      return data(
+        {
+          error: "An account with this email already exists.",
+          fieldErrors: { email: "An account with this email already exists." },
+        },
+        { status: 409 }
+      );
+    }
     const passwordHash = await hashPassword(password);
     const customer = await db.customer.create({
       data: { email, name: name || null, passwordHash, marketingOptIn: false },
     });
     customerId = customer.id;
     shouldSetSession = true;
-  } else {
-    if (!email) return data({ error: "Email is required." }, { status: 400 });
   }
 
   const headers: HeadersInit = {};
@@ -260,15 +212,15 @@ export async function action({ request }: Route.ActionArgs) {
         accountChoice: resolvedAccountChoice,
         email,
         customerId,
-        promoCode: discountCodeRaw || undefined,
-        giftCardCode: giftCardCodeRaw || undefined,
-        discountAmount,
-        giftCardAmount,
-        subtotal,
-        hasGiftCards,
-        hasProducts,
+        promoCode: quote.promoCode,
+        giftCardCode: quote.giftCardCode,
+        discountAmount: quote.discountAmount,
+        giftCardAmount: quote.giftCardAmount,
+        subtotal: quote.subtotal,
+        hasGiftCards: quote.hasGiftCards,
+        hasProducts: quote.hasProducts,
       },
-      lineItems,
+      lineItems: quote.lines,
     },
     { headers }
   );
@@ -412,6 +364,7 @@ function CheckoutForm() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState(loggedInCustomer?.name ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const discountAmount = 0;
@@ -425,11 +378,9 @@ function CheckoutForm() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
+    setFieldErrors({});
     setIsSubmitting(true);
 
-    // Try server-side validation (promo codes, auth, inventory).
-    // If the server has no DB configured (503) or returns non-JSON, fall back
-    // to client-side processing so the flow works without a configured backend.
     try {
       const formData = new FormData();
       formData.append("intent", "submit");
@@ -442,9 +393,14 @@ function CheckoutForm() {
       formData.append("name", name);
 
       const response = await fetch("/checkout", { method: "POST", body: formData });
-
-      // Try to parse JSON; if it fails (HTML error page), fall through to client-side
-      let result: any;
+      let result: {
+        success?: boolean;
+        phase1Data?: Parameters<typeof updatePhase1>[0];
+        redirectTo?: string;
+        error?: string;
+        fieldErrors?: Record<string, string>;
+        lineItems?: unknown;
+      } | null = null;
       try {
         result = await response.json();
       } catch {
@@ -452,43 +408,25 @@ function CheckoutForm() {
       }
 
       if (result && response.ok && result.success && result.phase1Data) {
-        // Server processed successfully
         updatePhase1(result.phase1Data);
         setCartItems(typedCartItems);
         nextPhase();
-        navigate(result.redirectTo);
+        navigate(result.redirectTo || "/checkout/shipping");
         return;
       }
 
-      if (result && !response.ok && response.status !== 503) {
-        // Real server-side validation error (not a missing-DB 503)
-        setError(result.error || "Something went wrong. Please try again.");
-        setIsSubmitting(false);
-        return;
-      }
-
-      // 503 or parse failure → fall through to client-side below
+      setFieldErrors(result?.fieldErrors ?? {});
+      setError(
+        result?.error ||
+          (response.status === 503
+            ? "Checkout is temporarily unavailable. Please try again shortly."
+            : "Something went wrong. Please try again.")
+      );
     } catch {
-      // Network error → fall through to client-side below
+      setError("Unable to reach the server. Check your connection and try again.");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    // ── Client-side fallback (no DB / Stripe configured) ──────────────────────
-    // Skip server validation; promo codes & auth will be re-validated later.
-    updatePhase1({
-      accountChoice: isLoggedIn ? "login" : accountChoice,
-      email,
-      customerId: loggedInCustomer?.id,
-      promoCode: discountCode || undefined,
-      giftCardCode: giftCardCode || undefined,
-      discountAmount: 0,
-      giftCardAmount: 0,
-      subtotal,
-      hasGiftCards: typedCartItems.some((i) => i.kind === "gift_card"),
-      hasProducts: typedCartItems.some((i) => (i.kind ?? "product") === "product"),
-    });
-    setCartItems(typedCartItems);
-    nextPhase();
-    navigate("/checkout/shipping");
   };
 
   if (!isHydrated) {
@@ -615,12 +553,21 @@ function CheckoutForm() {
                       id="email"
                       type="email"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        setFieldErrors((prev) => ({ ...prev, email: undefined as unknown as string }));
+                      }}
                       placeholder="you@example.com"
                       required
                       autoComplete="email"
+                      aria-invalid={Boolean(fieldErrors.email)}
                       className="border-[#d1ccc3] focus-visible:ring-[#1b2a4a] rounded-xl"
                     />
+                    {fieldErrors.email ? (
+                      <p className="mt-1.5 text-xs text-red-600" role="alert">
+                        {fieldErrors.email}
+                      </p>
+                    ) : null}
                   </div>
                   {(accountChoice === "login" || accountChoice === "register") && (
                     <div>
@@ -634,13 +581,26 @@ function CheckoutForm() {
                         id="password"
                         type="password"
                         value={password}
-                        onChange={(e) => setPassword(e.target.value)}
+                        onChange={(e) => {
+                          setPassword(e.target.value);
+                          setFieldErrors((prev) => {
+                            const next = { ...prev };
+                            delete next.password;
+                            return next;
+                          });
+                        }}
                         placeholder={accountChoice === "register" ? "Min 8 characters" : "Your password"}
                         required
                         autoComplete={accountChoice === "login" ? "current-password" : "new-password"}
                         minLength={8}
+                        aria-invalid={Boolean(fieldErrors.password)}
                         className="border-[#d1ccc3] focus-visible:ring-[#1b2a4a] rounded-xl"
                       />
+                      {fieldErrors.password ? (
+                        <p className="mt-1.5 text-xs text-red-600" role="alert">
+                          {fieldErrors.password}
+                        </p>
+                      ) : null}
                     </div>
                   )}
                   {accountChoice === "register" && (
@@ -660,6 +620,11 @@ function CheckoutForm() {
                         autoComplete="name"
                         className="border-[#d1ccc3] focus-visible:ring-[#1b2a4a] rounded-xl"
                       />
+                      {fieldErrors.name ? (
+                        <p className="mt-1.5 text-xs text-red-600" role="alert">
+                          {fieldErrors.name}
+                        </p>
+                      ) : null}
                     </div>
                   )}
                 </>

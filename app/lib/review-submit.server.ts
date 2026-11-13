@@ -22,6 +22,13 @@ export async function submitProductReview({
    */
   mirrorToProductIds?: string[];
 }): Promise<{ submitted?: true; error?: string }> {
+  const { rateLimit } = await import("~/lib/checkout-security.server");
+  const limited = await rateLimit(request, "review-submit", {
+    limit: 8,
+    windowMs: 60_000,
+  });
+  if (!limited.ok) return { error: limited.error };
+
   const formData = await request.formData();
   const parsed = parseReviewSubmission(formData);
   if (!parsed.ok) {
@@ -29,7 +36,26 @@ export async function submitProductReview({
     return { error: parsed.error };
   }
 
+  const product = await db.product.findUnique({
+    where: { id: productId },
+    select: { id: true },
+  });
+  if (!product) return { error: "Product not found." };
+
   const customer = await getCustomer(request);
+  if (customer) {
+    const pending = await db.review.findFirst({
+      where: {
+        productId,
+        status: "pending",
+        customerName: parsed.data.customerName,
+      },
+      select: { id: true },
+    });
+    if (pending) {
+      return { error: "You already have a pending review for this product." };
+    }
+  }
   const purchaseProductIds = [
     ...new Set([productId, ...(verifiedAgainstProductIds ?? [])]),
   ];

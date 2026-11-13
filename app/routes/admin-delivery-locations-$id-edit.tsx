@@ -59,16 +59,31 @@ export async function action({ request, params }: Route.ActionArgs) {
   }
 
   if (intent === "add-time-slot") {
-    const dayOfWeek = parseInt(String(formData.get("dayOfWeek") ?? "0"), 10);
+    const { compareHhMm, isValidHhMm, parseIntStrict } = await import(
+      "~/lib/validation"
+    );
+    const dayOfWeek = parseIntStrict(formData.get("dayOfWeek") ?? "0");
     const label = String(formData.get("label") ?? "").trim();
     const startTime = String(formData.get("startTime") ?? "").trim();
     const endTime = String(formData.get("endTime") ?? "").trim();
     const maxOrdersRaw = String(formData.get("maxOrders") ?? "").trim();
-    const maxOrders = maxOrdersRaw ? parseInt(maxOrdersRaw, 10) : null;
+    const maxOrders = maxOrdersRaw ? parseIntStrict(maxOrdersRaw) : null;
     const isActive = formData.get("isActive") === "on";
 
     if (!label || !startTime || !endTime) {
       return { error: "Label, start time, and end time are required." };
+    }
+    if (dayOfWeek == null || dayOfWeek < 0 || dayOfWeek > 6) {
+      return { error: "Day of week must be between 0 and 6." };
+    }
+    if (!isValidHhMm(startTime) || !isValidHhMm(endTime)) {
+      return { error: "Start and end times must use HH:MM format." };
+    }
+    if (compareHhMm(startTime, endTime) >= 0) {
+      return { error: "End time must be after start time." };
+    }
+    if (maxOrdersRaw && (maxOrders == null || maxOrders < 0)) {
+      return { error: "Max orders must be a non-negative integer." };
     }
 
     await db.deliveryTimeSlot.create({

@@ -9,6 +9,7 @@ export type AddressInput = {
   province: string;
   postalCode: string;
   country: string;
+  phone?: string;
 };
 
 export type CartItem = {

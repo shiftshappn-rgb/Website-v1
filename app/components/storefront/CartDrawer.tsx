@@ -5,6 +5,14 @@ import { useCart, type CartItem } from "~/lib/cart";
 import { cloudinaryImageUrl } from "~/lib/cloudinary";
 import { parseBundleProductName } from "~/lib/order-line-groups";
 import { cn, formatCurrency } from "~/lib/utils";
+import { MAX_LINE_QTY } from "~/lib/validation";
+
+function lineMaxQty(item: { maxQty?: number; quantity: number }): number {
+  if (item.maxQty != null && Number.isFinite(item.maxQty) && item.maxQty > 0) {
+    return Math.min(MAX_LINE_QTY, Math.trunc(item.maxQty));
+  }
+  return MAX_LINE_QTY;
+}
 
 function CartThumb({
   publicId,
@@ -209,7 +217,8 @@ export function CartDrawer({ cloudName = null }: { cloudName?: string | null }) 
                               row.packGroupId
                             )
                           }
-                          className="flex min-h-10 min-w-10 items-center justify-center rounded border border-charcoal/20 p-2"
+                          disabled={row.quantity >= lineMaxQty(lead)}
+                          className="flex min-h-10 min-w-10 items-center justify-center rounded border border-charcoal/20 p-2 disabled:opacity-40"
                           aria-label="Increase bundle quantity"
                         >
                           <Plus size={14} />
@@ -287,7 +296,8 @@ export function CartDrawer({ cloudName = null }: { cloudName?: string | null }) 
                             item.packGroupId
                           )
                         }
-                        className="flex min-h-10 min-w-10 items-center justify-center rounded border border-charcoal/20 p-2"
+                        disabled={item.quantity >= lineMaxQty(item)}
+                        className="flex min-h-10 min-w-10 items-center justify-center rounded border border-charcoal/20 p-2 disabled:opacity-40"
                         aria-label="Increase quantity"
                       >
                         <Plus size={14} />

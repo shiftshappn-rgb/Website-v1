@@ -70,17 +70,26 @@ export async function action({ request }: Route.ActionArgs) {
   await requireAdmin(request);
 
   const formData = await request.formData();
-  const lowStockThreshold = parseInt(String(formData.get("lowStockThreshold") ?? "10"), 10);
+  const { isValidEmail, parseIntStrict, parseMoney } = await import("~/lib/validation");
+  const lowStockThreshold = parseIntStrict(formData.get("lowStockThreshold") ?? "10");
   const storeName = String(formData.get("storeName") ?? "").trim();
   const supportEmail = String(formData.get("supportEmail") ?? "").trim();
-  const freeShippingThreshold = parseFloat(
-    String(formData.get("freeShippingThreshold") ?? "100")
-  );
+  const freeShippingThreshold = parseMoney(formData.get("freeShippingThreshold") ?? "100");
   const taxRateRaw = parseFloat(String(formData.get("taxRate") ?? "13"));
   const taxRate = Number.isFinite(taxRateRaw)
     ? Math.min(100, Math.max(0, Math.round(taxRateRaw * 100) / 100))
     : 13;
   const announcementBanner = String(formData.get("announcementBanner") ?? "").trim();
+
+  if (lowStockThreshold == null || lowStockThreshold < 0) {
+    return { error: "Low stock threshold must be a non-negative integer." };
+  }
+  if (freeShippingThreshold == null || freeShippingThreshold < 0) {
+    return { error: "Free shipping threshold must be a valid amount." };
+  }
+  if (supportEmail && !isValidEmail(supportEmail)) {
+    return { error: "Enter a valid support email." };
+  }
 
   const updates: { key: string; value: object | string | number }[] = [
     { key: "lowStockThreshold", value: { threshold: lowStockThreshold } },

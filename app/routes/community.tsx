@@ -3,8 +3,10 @@ import type { Route } from "./+types/community";
 import { Button } from "~/components/ui/Button";
 import { Input, Textarea } from "~/components/ui/Input";
 import { isDatabaseAvailable, tryDb } from "~/db.server";
+import { rateLimit } from "~/lib/checkout-security.server";
 import { buildMeta } from "~/lib/seo";
 import { getCustomer } from "~/lib/session.server";
+import { isAllowedImageHost, isHttpUrl } from "~/lib/validation";
 
 export function meta({}: Route.MetaArgs) {
   return buildMeta({
@@ -13,16 +15,6 @@ export function meta({}: Route.MetaArgs) {
       "The people who take care of everyone else are the worst at being taken care of themselves. shiftshappn exists for them.",
     path: "/community",
   });
-}
-
-function isHttpUrl(value: string | null | undefined) {
-  if (!value) return false;
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
 }
 
 function optionalText(value: FormDataEntryValue | null, max = 80) {
@@ -59,7 +51,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       workplace: post.workplace,
       title: post.title,
       body: post.body,
-      image: isHttpUrl(post.image) ? post.image : null,
+      image: post.image && isHttpUrl(post.image) ? post.image : null,
       createdAt: post.createdAt.toISOString(),
     })),
   };
@@ -74,6 +66,12 @@ export async function action({ request }: Route.ActionArgs) {
     return { error: "Community posts are unavailable right now." };
   }
 
+  const limited = await rateLimit(request, "community-post", {
+    limit: 5,
+    windowMs: 60_000,
+  });
+  if (!limited.ok) return { error: limited.error };
+
   const formData = await request.formData();
   if (String(formData.get("website") ?? "").trim()) {
     return { submitted: true };
@@ -82,22 +80,37 @@ export async function action({ request }: Route.ActionArgs) {
   const customer = await getCustomer(request);
   const authorName =
     String(formData.get("authorName") ?? "").trim() || customer?.name?.trim() || "";
-  const title = String(formData.get("title") ?? "").trim();
-  const body = String(formData.get("body") ?? "").trim();
+  const title = String(formData.get("title") ?? "").trim().slice(0, 120);
+  const body = String(formData.get("body") ?? "").trim().slice(0, 5000);
   const role = optionalText(formData.get("role"));
   const workplace = optionalText(formData.get("workplace"));
   const imageRaw = String(formData.get("image") ?? "").trim();
   if (imageRaw && !isHttpUrl(imageRaw)) {
-    return { error: "Photo must be an http or https link." };
+    return { error: "Photo must be an http or https link.", fieldErrors: { image: "Invalid photo URL." } };
+  }
+  if (imageRaw && !isAllowedImageHost(imageRaw)) {
+    return {
+      error: "Photo must be hosted on Cloudinary or another approved host.",
+      fieldErrors: { image: "Use a Cloudinary image URL." },
+    };
   }
 
-  if (authorName.length < 2 || title.length < 4 || body.length < 20) {
-    return { error: "Add your name, a title, and at least 20 characters." };
+  if (authorName.length < 2) {
+    return { error: "Add your name (at least 2 characters).", fieldErrors: { authorName: "Name is required." } };
+  }
+  if (authorName.length > 80) {
+    return { error: "Name must be at most 80 characters.", fieldErrors: { authorName: "Name is too long." } };
+  }
+  if (title.length < 4) {
+    return { error: "Add a title (at least 4 characters).", fieldErrors: { title: "Title is required." } };
+  }
+  if (body.length < 20) {
+    return { error: "Write at least 20 characters.", fieldErrors: { body: "Story is too short." } };
   }
 
   await db.communityPost.create({
     data: {
-      authorName,
+      authorName: authorName.slice(0, 80),
       role,
       workplace,
       title,

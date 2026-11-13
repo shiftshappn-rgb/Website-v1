@@ -76,13 +76,36 @@ function FooterLink({ href, children }: { href: string; children: string }) {
 function NewsletterSignup() {
   const inputId = useId();
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "done">("idle");
+  const [status, setStatus] = useState<"idle" | "submitting" | "done" | "error">(
+    "idle"
+  );
+  const [error, setError] = useState<string | null>(null);
 
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!email.trim()) return;
-    setStatus("done");
-    setEmail("");
+    setError(null);
+    if (!email.trim()) {
+      setError("Enter a valid email address.");
+      setStatus("error");
+      return;
+    }
+    setStatus("submitting");
+    try {
+      const body = new FormData();
+      body.append("email", email.trim());
+      const response = await fetch("/api/newsletter", { method: "POST", body });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        setError(result.error || "Unable to subscribe right now.");
+        setStatus("error");
+        return;
+      }
+      setStatus("done");
+      setEmail("");
+    } catch {
+      setError("Unable to subscribe right now.");
+      setStatus("error");
+    }
   }
 
   return (
@@ -117,17 +140,27 @@ function NewsletterSignup() {
               required
               autoComplete="email"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                if (status === "error") setStatus("idle");
+              }}
               placeholder="Email address"
-              className="min-h-12 flex-1 rounded-full border border-white/20 bg-white/95 px-5 text-sm text-charcoal outline-none placeholder:text-charcoal/40 focus:border-gold focus:ring-2 focus:ring-gold/40"
+              disabled={status === "submitting"}
+              className="min-h-12 flex-1 rounded-full border border-white/20 bg-white/95 px-5 text-sm text-charcoal outline-none placeholder:text-charcoal/40 focus:border-gold focus:ring-2 focus:ring-gold/40 disabled:opacity-60"
             />
             <button
               type="submit"
-              className="inline-flex min-h-12 shrink-0 items-center justify-center rounded-full bg-gold px-6 text-[11px] font-extrabold uppercase tracking-[0.16em] text-charcoal transition-transform hover:scale-[1.02] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
+              disabled={status === "submitting"}
+              className="inline-flex min-h-12 shrink-0 items-center justify-center rounded-full bg-gold px-6 text-[11px] font-extrabold uppercase tracking-[0.16em] text-charcoal transition-transform hover:scale-[1.02] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold disabled:opacity-60"
             >
-              Sign up
+              {status === "submitting" ? "Saving…" : "Sign up"}
             </button>
           </div>
+          {error ? (
+            <p className="mt-2 text-sm text-terracotta" role="alert">
+              {error}
+            </p>
+          ) : null}
         </form>
       )}
     </div>

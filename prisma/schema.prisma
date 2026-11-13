@@ -361,7 +361,12 @@ model Order {
   tax                   Decimal     @db.Decimal(10, 2) @default(0)
   total                 Decimal     @db.Decimal(10, 2)
   currency              String      @default("CAD")
-  stripePaymentIntentId String?
+  discountAmount        Decimal     @db.Decimal(10, 2) @default(0)
+  giftCardAmount        Decimal     @db.Decimal(10, 2) @default(0)
+  promoCode             String?
+  giftCardCode          String?
+  idempotencyKey        String?     @unique
+  stripePaymentIntentId String?     @unique
   stripeSessionId       String?     @unique
   confirmationSentAt    DateTime?
   deliveryCode          String?
@@ -383,6 +388,23 @@ model Order {
   deliveryTimeSlot      DeliveryTimeSlot?  @relation(fields: [deliveryTimeSlotId], references: [id])
   items                 OrderItem[]
   giftCards             GiftCard[]
+}
+
+model RateLimitBucket {
+  id          String   @id @default(cuid())
+  key         String
+  windowStart DateTime
+  count       Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([key, windowStart])
+  @@index([key])
+}
+
+model NewsletterSubscriber {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
 }
 
 model OrderItem {

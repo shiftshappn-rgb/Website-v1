@@ -263,6 +263,7 @@ export async function loader({ params }: Route.LoaderArgs) {
 export default function BundleDetail({ loaderData }: Route.ComponentProps) {
   const { pack, cloudName } = loaderData;
   const addPack = useCart((state) => state.addPack);
+  const cartItems = useCart((state) => state.items);
 
   const [productPicks, setProductPicks] = useState<Record<string, ProductPick>>(() =>
     Object.fromEntries(
@@ -464,6 +465,11 @@ export default function BundleDetail({ loaderData }: Route.ComponentProps) {
       pack.slug,
       ...readyLines.map((line) => line.variant.id),
     ].join(":");
+    const existingQty = cartItems
+      .filter((item) => item.packGroupId === groupId)
+      .reduce((sum, item) => Math.max(sum, item.quantity), 0);
+    const qty = Math.min(quantity, maxQty, Math.max(0, maxQty - existingQty));
+    if (qty <= 0) return;
     const shares = allocatePrices(
       readyLines.map((line) => line.variant.price),
       pack.discountType,
@@ -485,7 +491,8 @@ export default function BundleDetail({ loaderData }: Route.ComponentProps) {
         price: shares.shares[index] ?? line.variant.price,
         imagePublicId: line.variant.images[0]?.publicId,
         imageAlt: line.variant.images[0]?.altText || line.productName,
-        quantity,
+        quantity: qty,
+        maxQty,
       }))
     );
   }

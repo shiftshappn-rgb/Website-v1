@@ -1,19 +1,28 @@
+import {
+  MAX_PASSWORD_LENGTH,
+  hasFieldErrors as hasAnyFieldErrors,
+  isValidEmail,
+  normalizeEmail,
+  validateName,
+  type FieldErrors,
+} from "~/lib/validation";
+
 export type AuthFieldErrors = {
   email?: string;
   password?: string;
   name?: string;
+  confirmPassword?: string;
 };
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-export function isValidEmail(email: string): boolean {
-  return EMAIL_RE.test(email);
-}
+export { isValidEmail, normalizeEmail };
 
 /** Returns null when the password meets create-account strength rules. */
 export function validatePasswordStrength(password: string): string | null {
   if (password.length < 8) {
     return "Password must be at least 8 characters.";
+  }
+  if (password.length > MAX_PASSWORD_LENGTH) {
+    return `Password must be at most ${MAX_PASSWORD_LENGTH} characters.`;
   }
   if (!/[A-Z]/.test(password)) {
     return "Password must include an uppercase letter.";
@@ -52,10 +61,13 @@ export function validateLoginFields({
 export function validateRegisterFields({
   email,
   password,
+  name,
+  confirmPassword,
 }: {
   email: string;
   password: string;
   name?: string;
+  confirmPassword?: string;
 }): AuthFieldErrors {
   const fieldErrors: AuthFieldErrors = {};
 
@@ -63,6 +75,11 @@ export function validateRegisterFields({
     fieldErrors.email = "Email is required.";
   } else if (!isValidEmail(email)) {
     fieldErrors.email = "Enter a valid email address.";
+  }
+
+  if (name !== undefined) {
+    const nameError = validateName(name, { required: false });
+    if (nameError) fieldErrors.name = nameError;
   }
 
   if (!password) {
@@ -74,9 +91,17 @@ export function validateRegisterFields({
     }
   }
 
+  if (confirmPassword !== undefined) {
+    if (!confirmPassword) {
+      fieldErrors.confirmPassword = "Confirm your password.";
+    } else if (confirmPassword !== password) {
+      fieldErrors.confirmPassword = "Passwords do not match.";
+    }
+  }
+
   return fieldErrors;
 }
 
-export function hasFieldErrors(fieldErrors: AuthFieldErrors): boolean {
-  return Object.keys(fieldErrors).length > 0;
+export function hasFieldErrors(fieldErrors: AuthFieldErrors | FieldErrors): boolean {
+  return hasAnyFieldErrors(fieldErrors);
 }

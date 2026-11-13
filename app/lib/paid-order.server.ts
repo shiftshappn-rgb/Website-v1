@@ -30,6 +30,11 @@ export type RecordPaidOrderInput = {
   tax: number;
   total: number;
   currency?: string;
+  discountAmount?: number;
+  giftCardAmount?: number;
+  promoCode?: string | null;
+  giftCardCode?: string | null;
+  idempotencyKey?: string | null;
   stripeSessionId?: string | null;
   stripePaymentIntentId?: string | null;
   shippingAddress: Prisma.InputJsonValue;
@@ -71,6 +76,8 @@ export function parseOrderAddress(value: unknown): Record<string, string> {
 
 export async function recordPaidOrder(db: Db, input: RecordPaidOrderInput) {
   const stripeSessionId = blankToNull(input.stripeSessionId);
+  const stripePaymentIntentId = blankToNull(input.stripePaymentIntentId);
+  const idempotencyKey = blankToNull(input.idempotencyKey);
   const deliveryLocationId = blankToNull(input.deliveryLocationId);
   const deliveryTimeSlotId = blankToNull(input.deliveryTimeSlotId);
 
@@ -91,8 +98,13 @@ export async function recordPaidOrder(db: Db, input: RecordPaidOrderInput) {
           tax: input.tax,
           total: input.total,
           currency: input.currency ?? "CAD",
+          discountAmount: input.discountAmount ?? 0,
+          giftCardAmount: input.giftCardAmount ?? 0,
+          promoCode: blankToNull(input.promoCode),
+          giftCardCode: blankToNull(input.giftCardCode),
+          idempotencyKey,
           stripeSessionId,
-          stripePaymentIntentId: blankToNull(input.stripePaymentIntentId),
+          stripePaymentIntentId,
           status: "received",
           deliveryCode,
           deliveryCodeIssuedAt,
@@ -106,6 +118,9 @@ export async function recordPaidOrder(db: Db, input: RecordPaidOrderInput) {
       });
 
       for (const item of input.items) {
+        if (item.kind === "product" && item.quantity <= 0) {
+          throw new Error("Invalid order quantity.");
+        }
         await tx.orderItem.create({
           data: {
             orderId: created.id,
@@ -122,10 +137,18 @@ export async function recordPaidOrder(db: Db, input: RecordPaidOrderInput) {
 
       for (const item of input.items) {
         if (item.kind !== "product" || !blankToNull(item.variantId)) continue;
-        await tx.productVariant.update({
-          where: { id: item.variantId! },
+        const reserved = await tx.productVariant.updateMany({
+          where: {
+            id: item.variantId!,
+            inventoryQty: { gte: item.quantity },
+          },
           data: { inventoryQty: { decrement: item.quantity } },
         });
+        if (reserved.count !== 1) {
+          throw new Error(
+            `Insufficient stock while reserving ${item.productName}.`
+          );
+        }
       }
 
       return tx.order.findUniqueOrThrow({
@@ -136,13 +159,30 @@ export async function recordPaidOrder(db: Db, input: RecordPaidOrderInput) {
 
     return { order, alreadyExisted: false as const };
   } catch (error) {
-    if (!stripeSessionId || !isUniqueConflict(error)) throw error;
-    const order = await db.order.findUnique({
-      where: { stripeSessionId },
-      include: { items: true },
-    });
-    if (!order) throw error;
-    return { order, alreadyExisted: true as const };
+    if (isUniqueConflict(error)) {
+      if (stripeSessionId) {
+        const order = await db.order.findUnique({
+          where: { stripeSessionId },
+          include: { items: true },
+        });
+        if (order) return { order, alreadyExisted: true as const };
+      }
+      if (stripePaymentIntentId) {
+        const order = await db.order.findUnique({
+          where: { stripePaymentIntentId },
+          include: { items: true },
+        });
+        if (order) return { order, alreadyExisted: true as const };
+      }
+      if (idempotencyKey) {
+        const order = await db.order.findUnique({
+          where: { idempotencyKey },
+          include: { items: true },
+        });
+        if (order) return { order, alreadyExisted: true as const };
+      }
+    }
+    throw error;
   }
 }
 

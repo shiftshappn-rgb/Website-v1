@@ -9,6 +9,10 @@ import { Link } from "react-router";
 import { tryDb } from "~/db.server";
 import { getCustomer } from "~/lib/session.server";
 import type { LocationType } from "@prisma/client";
+import { buildCheckoutQuote } from "~/lib/checkout-pricing.server";
+import { assertSameOrigin } from "~/lib/checkout-security.server";
+import { validatePhase2Fields } from "~/lib/checkout-validation";
+import { CA_PROVINCES } from "~/lib/validation";
 
 type DeliveryLocationData = {
   id: string;
@@ -85,30 +89,83 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
-  const formData = await request.formData();
-  const deliveryLocationId = String(formData.get("deliveryLocationId") ?? "");
-  const deliveryTimeSlotId = String(formData.get("deliveryTimeSlotId") ?? "");
-  const shippingMethod = String(formData.get("shippingMethod") ?? "standard") as
-    | "hospital_free"
-    | "standard"
-    | "express";
+  const origin = assertSameOrigin(request);
+  if (!origin.ok) return data({ error: origin.error }, { status: 403 });
 
   const db = tryDb();
-  let shippingCost = shippingMethod === "express" ? 15 : 9.95;
+  if (!db) return data({ error: "Store unavailable" }, { status: 503 });
 
-  if (db && deliveryLocationId && deliveryLocationId !== "other-custom") {
-    const location = await db.deliveryLocation.findUnique({
-      where: { id: deliveryLocationId },
-    });
-    if (location?.freeDelivery) {
-      shippingCost = 0;
-    }
+  const formData = await request.formData();
+  const isGiftCardsOnly = String(formData.get("isGiftCardsOnly") ?? "") === "1";
+  const deliveryLocationId = String(formData.get("deliveryLocationId") ?? "");
+  const deliveryLocationType = String(formData.get("deliveryLocationType") ?? "");
+  const deliveryLocationName = String(formData.get("deliveryLocationName") ?? "");
+  const deliveryTimeSlotId = String(formData.get("deliveryTimeSlotId") ?? "");
+  const deliveryTimeSlotLabel = String(formData.get("deliveryTimeSlotLabel") ?? "");
+  const shippingMethod = String(formData.get("shippingMethod") ?? "standard");
+  const cartItems = JSON.parse(String(formData.get("cartItems") ?? "[]"));
+  const promoCode = String(formData.get("promoCode") ?? "") || undefined;
+  const giftCardCode = String(formData.get("giftCardCode") ?? "") || undefined;
+  const email = String(formData.get("email") ?? "");
+
+  let billingAddress: Record<string, string> = {};
+  try {
+    billingAddress = JSON.parse(String(formData.get("billingAddress") ?? "{}"));
+  } catch {
+    billingAddress = {};
+  }
+
+  const phase2Check = validatePhase2Fields({
+    isGiftCardsOnly,
+    deliveryLocationId,
+    deliveryLocationType,
+    deliveryTimeSlotId,
+    shippingMethod,
+    billingAddress,
+  });
+  if (Object.keys(phase2Check.fieldErrors).length > 0) {
+    return data(
+      {
+        error: Object.values(phase2Check.fieldErrors)[0],
+        fieldErrors: phase2Check.fieldErrors,
+      },
+      { status: 400 }
+    );
+  }
+
+  const quoted = await buildCheckoutQuote(db, {
+    cartItems,
+    promoCode,
+    giftCardCode,
+    email,
+    phase2: {
+      deliveryLocationId,
+      deliveryLocationType,
+      deliveryTimeSlotId,
+      shippingMethod,
+      isGiftCardsOnly,
+    },
+  });
+  if (!quoted.ok) {
+    return data(
+      { error: quoted.error, fieldErrors: quoted.fieldErrors },
+      { status: 400 }
+    );
   }
 
   return data({
     success: true,
     redirectTo: "/checkout/payment",
-    phase2Data: { deliveryLocationId, deliveryTimeSlotId, shippingMethod, shippingCost },
+    phase2Data: {
+      deliveryLocationId: quoted.quote.deliveryLocationId ?? deliveryLocationId,
+      deliveryTimeSlotId: quoted.quote.deliveryTimeSlotId ?? deliveryTimeSlotId,
+      shippingMethod: quoted.quote.shippingMethod,
+      shippingCost: quoted.quote.shippingCost,
+      billingAddress: phase2Check.address ?? billingAddress,
+      deliveryLocationName: deliveryLocationName || undefined,
+      deliveryLocationType: deliveryLocationType || undefined,
+      deliveryTimeSlotLabel: deliveryTimeSlotLabel || undefined,
+    },
   });
 }
 
@@ -163,7 +220,7 @@ function LocationCard({
 export default function CheckoutPhase2() {
   const { locations, savedAddresses, customerName } = useLoaderData<typeof loader>();
   const { updatePhase2, formData, hydrated } = useCheckout();
-  const { phase1 } = formData ?? {};
+  const { phase1, cartItems } = formData ?? {};
   const navigate = useNavigate();
 
   const hospitals = locations.filter((l) => l.type === "hospital");
@@ -183,9 +240,11 @@ export default function CheckoutPhase2() {
   const [billingCity, setBillingCity] = useState(defaultAddress?.city ?? "Halifax");
   const [billingProvince, setBillingProvince] = useState(defaultAddress?.province ?? "NS");
   const [billingPostal, setBillingPostal] = useState(defaultAddress?.postalCode ?? "");
+  const [billingPhone, setBillingPhone] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const selectedLocation = locations.find((l) => l.id === selectedLocationId);
   const isHospitalOrClinic =
@@ -209,20 +268,17 @@ export default function CheckoutPhase2() {
     ? true
     : !!selectedLocationId &&
       (isHospitalOrClinic ? !!selectedTimeSlot : true) &&
-      (!isOther || (billingLine1 && billingCity && billingPostal));
+      (!isOther || (billingName && billingLine1 && billingCity && billingPostal && billingPhone));
 
   const handleContinue = async () => {
-    if (!canContinue) return;
+    if (!canContinue || isSubmitting) return;
     setIsSubmitting(true);
     setError(null);
+    setFieldErrors({});
 
-    if (isGiftCardsOnly) {
-      updatePhase2({
-        deliveryLocationId: "",
-        deliveryTimeSlotId: "",
-        shippingMethod: "standard",
-        shippingCost: 0,
-        billingAddress: {
+    const selectedSlot = availableTimeSlots.find((s) => s.id === selectedTimeSlot);
+    const billingAddress = isGiftCardsOnly
+      ? {
           name: "",
           line1: "",
           line2: "",
@@ -230,52 +286,96 @@ export default function CheckoutPhase2() {
           province: "",
           postalCode: "",
           country: "CA",
-        },
-        deliveryLocationName: "Digital delivery",
-        deliveryLocationType: "other",
+        }
+      : isOther
+        ? {
+            name: billingName,
+            line1: billingLine1,
+            line2: billingLine2,
+            city: billingCity,
+            province: billingProvince,
+            postalCode: billingPostal,
+            country: "CA",
+            phone: billingPhone,
+          }
+        : selectedLocation
+          ? {
+              name: billingName || "",
+              line1: selectedLocation.line1,
+              line2: selectedLocation.line2 ?? "",
+              city: selectedLocation.city,
+              province: selectedLocation.province,
+              postalCode: selectedLocation.postalCode,
+              country: "CA",
+              phone: billingPhone || undefined,
+            }
+          : {
+              name: "",
+              line1: "",
+              line2: "",
+              city: "",
+              province: "",
+              postalCode: "",
+              country: "CA",
+            };
+
+    try {
+      const formData = new FormData();
+      formData.append("isGiftCardsOnly", isGiftCardsOnly ? "1" : "0");
+      formData.append(
+        "deliveryLocationId",
+        isGiftCardsOnly ? "" : isOther ? "other-custom" : selectedLocationId ?? ""
+      );
+      formData.append(
+        "deliveryLocationType",
+        isGiftCardsOnly ? "other" : isOther ? "other" : selectedLocation?.type ?? "other"
+      );
+      formData.append(
+        "deliveryLocationName",
+        isGiftCardsOnly
+          ? "Digital delivery"
+          : isOther
+            ? "Custom Address"
+            : selectedLocation?.name ?? ""
+      );
+      formData.append("deliveryTimeSlotId", selectedTimeSlot ?? "");
+      formData.append(
+        "deliveryTimeSlotLabel",
+        selectedSlot
+          ? `${selectedSlot.label} (${formatTimeRange(selectedSlot.startTime, selectedSlot.endTime)})`
+          : ""
+      );
+      formData.append(
+        "shippingMethod",
+        isHospitalOrClinic ? "hospital_free" : shippingMethod
+      );
+      formData.append("billingAddress", JSON.stringify(billingAddress));
+      formData.append("cartItems", JSON.stringify(cartItems));
+      formData.append("promoCode", phase1?.promoCode ?? "");
+      formData.append("giftCardCode", phase1?.giftCardCode ?? "");
+      formData.append("email", phase1?.email ?? "");
+
+      const response = await fetch("/checkout/shipping", {
+        method: "POST",
+        body: formData,
       });
-      navigate("/checkout/payment");
-      return;
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        setFieldErrors(result.fieldErrors ?? {});
+        setError(result.error || "Unable to save shipping details.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      updatePhase2({
+        ...result.phase2Data,
+        billingAddress: result.phase2Data.billingAddress ?? billingAddress,
+      });
+      navigate(result.redirectTo || "/checkout/payment");
+    } catch {
+      setError("Unable to reach the server. Please try again.");
+      setIsSubmitting(false);
     }
-
-    const billingAddress = isOther
-      ? {
-          name: billingName,
-          line1: billingLine1,
-          line2: billingLine2,
-          city: billingCity,
-          province: billingProvince,
-          postalCode: billingPostal,
-          country: "CA",
-        }
-      : selectedLocation
-      ? {
-          name: "",
-          line1: selectedLocation.line1,
-          line2: selectedLocation.line2 ?? "",
-          city: selectedLocation.city,
-          province: selectedLocation.province,
-          postalCode: selectedLocation.postalCode,
-          country: "CA",
-        }
-      : null;
-
-    const selectedSlot = availableTimeSlots.find((s) => s.id === selectedTimeSlot);
-
-    updatePhase2({
-      deliveryLocationId: isOther ? "" : selectedLocationId!,
-      deliveryTimeSlotId: selectedTimeSlot ?? "",
-      shippingMethod: isHospitalOrClinic ? "hospital_free" : shippingMethod,
-      shippingCost,
-      billingAddress: billingAddress as any,
-      deliveryLocationName: isOther ? "Custom Address" : selectedLocation?.name ?? "Custom Address",
-      deliveryLocationType: isOther ? "other" : selectedLocation?.type ?? "other",
-      deliveryTimeSlotLabel: selectedSlot
-        ? `${selectedSlot.label} (${formatTimeRange(selectedSlot.startTime, selectedSlot.endTime)})`
-        : undefined,
-    });
-
-    navigate("/checkout/payment");
   };
 
   if (!hydrated) {
@@ -555,13 +655,24 @@ export default function CheckoutPhase2() {
                         <label className="block text-xs font-semibold text-[#555] uppercase tracking-wider mb-1.5">
                           Province *
                         </label>
-                        <ShadInput
+                        <select
                           value={billingProvince}
                           onChange={(e) => setBillingProvince(e.target.value)}
-                          placeholder="NS"
-                          className="border-[#d1ccc3] focus-visible:ring-[#1b2a4a] rounded-xl"
+                          className="flex h-10 w-full rounded-xl border border-[#d1ccc3] bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1b2a4a]"
                           required
-                        />
+                          aria-invalid={Boolean(fieldErrors.province)}
+                        >
+                          {CA_PROVINCES.map((code) => (
+                            <option key={code} value={code}>
+                              {code}
+                            </option>
+                          ))}
+                        </select>
+                        {fieldErrors.province ? (
+                          <p className="mt-1 text-xs text-red-600" role="alert">
+                            {fieldErrors.province}
+                          </p>
+                        ) : null}
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-[#555] uppercase tracking-wider mb-1.5">
@@ -573,7 +684,32 @@ export default function CheckoutPhase2() {
                           placeholder="B3H 3A7"
                           className="border-[#d1ccc3] focus-visible:ring-[#1b2a4a] rounded-xl"
                           required
+                          aria-invalid={Boolean(fieldErrors.postalCode)}
                         />
+                        {fieldErrors.postalCode ? (
+                          <p className="mt-1 text-xs text-red-600" role="alert">
+                            {fieldErrors.postalCode}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-semibold text-[#555] uppercase tracking-wider mb-1.5">
+                          Phone *
+                        </label>
+                        <ShadInput
+                          type="tel"
+                          value={billingPhone}
+                          onChange={(e) => setBillingPhone(e.target.value)}
+                          placeholder="(902) 555-0100"
+                          className="border-[#d1ccc3] focus-visible:ring-[#1b2a4a] rounded-xl"
+                          required
+                          aria-invalid={Boolean(fieldErrors.phone)}
+                        />
+                        {fieldErrors.phone ? (
+                          <p className="mt-1 text-xs text-red-600" role="alert">
+                            {fieldErrors.phone}
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                   </div>

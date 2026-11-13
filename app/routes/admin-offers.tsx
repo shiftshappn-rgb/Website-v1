@@ -63,6 +63,15 @@ export async function action({ request }: Route.ActionArgs) {
   if (!title || Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) {
     return { error: "Title, start date, and end date are required." };
   }
+  if (endsAt.getTime() <= startsAt.getTime()) {
+    return { error: "End date must be after the start date." };
+  }
+  if (discountCode) {
+    const promo = await db.discountCode.findUnique({ where: { code: discountCode } });
+    if (!promo) {
+      return { error: "That discount code does not exist." };
+    }
+  }
 
   await db.monthlyOffer.create({
     data: { title, subtitle, ctaLabel, ctaHref, discountCode, startsAt, endsAt },

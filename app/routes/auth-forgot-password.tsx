@@ -4,6 +4,8 @@ import { AuthError, AuthShell } from "~/components/auth/AuthShell";
 import { Button } from "~/components/ui/Button";
 import { Input } from "~/components/ui/Input";
 import { db, isDatabaseAvailable } from "~/db.server";
+import { isValidEmail, normalizeEmail } from "~/lib/auth-validation";
+import { rateLimit } from "~/lib/checkout-security.server";
 import { requestPasswordReset } from "~/lib/password-reset.server";
 import { buildMeta } from "~/lib/seo";
 import { getCustomer } from "~/lib/session.server";
@@ -30,23 +32,30 @@ export async function action({ request }: Route.ActionArgs) {
     );
   }
 
+  const limited = await rateLimit(request, "auth-forgot", {
+    limit: 5,
+    windowMs: 60_000,
+  });
+  if (!limited.ok) {
+    return data({ error: limited.error }, { status: 429 });
+  }
+
   const formData = await request.formData();
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const email = normalizeEmail(String(formData.get("email") ?? ""));
 
   if (!email) {
     return data({ error: "Email is required." }, { status: 400 });
   }
+  if (!isValidEmail(email)) {
+    return data({ error: "Enter a valid email address." }, { status: 400 });
+  }
 
   try {
     await requestPasswordReset(db, email);
-    return { sent: true as const };
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Unable to send reset email. Please try again.";
-    return data({ error: message }, { status: 500 });
+    console.error("[auth/forgot-password]", error);
   }
+  return { sent: true as const };
 }
 
 export default function AuthForgotPassword({

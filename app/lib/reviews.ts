@@ -1,3 +1,5 @@
+import { CATALOG_LENGTHS, CATALOG_SIZES } from "~/lib/product-catalog";
+
 export const REVIEW_FIT_OPTIONS = [
   "True to size",
   "Slightly small",
@@ -136,14 +138,37 @@ export function parseReviewSubmission(formData: FormData): ReviewSubmission {
   const body = String(formData.get("body") ?? "").trim();
   const rating = parseInt(String(formData.get("rating") ?? "0"), 10);
 
-  if (customerName.length < 2 || customerName.length > 80) {
-    return { ok: false, error: "Please enter your name." };
+  if (customerName.length < 2) {
+    return { ok: false, error: "Please enter your name (at least 2 characters)." };
+  }
+  if (customerName.length > 80) {
+    return { ok: false, error: "Name must be at most 80 characters." };
   }
   if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
     return { ok: false, error: "Please choose a rating from 1 to 5." };
   }
-  if (body.length < 20 || body.length > 2000) {
+  if (body.length < 20) {
     return { ok: false, error: "Write at least 20 characters about the product." };
+  }
+  if (body.length > 2000) {
+    return { ok: false, error: "Review must be at most 2000 characters." };
+  }
+
+  const sizePurchased = optionalTrim(formData.get("sizePurchased"), 20);
+  const lengthPurchased = optionalTrim(formData.get("lengthPurchased"), 40);
+  const fit = optionalTrim(formData.get("fit"), 40);
+
+  if (sizePurchased && !(CATALOG_SIZES as readonly string[]).includes(sizePurchased)) {
+    return { ok: false, error: "Choose a valid size." };
+  }
+  if (
+    lengthPurchased &&
+    !(CATALOG_LENGTHS as readonly string[]).includes(lengthPurchased)
+  ) {
+    return { ok: false, error: "Choose a valid length." };
+  }
+  if (fit && !(REVIEW_FIT_OPTIONS as readonly string[]).includes(fit)) {
+    return { ok: false, error: "Choose a valid fit option." };
   }
 
   return {
@@ -153,13 +178,13 @@ export function parseReviewSubmission(formData: FormData): ReviewSubmission {
       rating,
       title,
       body,
-      sizePurchased: optionalTrim(formData.get("sizePurchased"), 20),
+      sizePurchased,
       height: optionalTrim(formData.get("height"), 40),
-      lengthPurchased: optionalTrim(formData.get("lengthPurchased"), 40),
+      lengthPurchased,
       weight: optionalTrim(formData.get("weight"), 40),
       occupation: optionalTrim(formData.get("occupation"), 80),
       hospital: optionalTrim(formData.get("hospital"), 120),
-      fit: optionalTrim(formData.get("fit"), 40),
+      fit,
     },
   };
 }

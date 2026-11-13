@@ -1,31 +1,68 @@
 import type { Route } from "./+types/contact";
-import { Form } from "react-router";
+import { Form, data } from "react-router";
 import { Input, Textarea } from "~/components/ui/Input";
 import { Button } from "~/components/ui/Button";
 import { buildMeta } from "~/lib/seo";
+import { rateLimit } from "~/lib/checkout-security.server";
+import {
+  MAX_NAME_LENGTH,
+  isValidEmail,
+  normalizeEmail,
+  trimToMax,
+  validateName,
+} from "~/lib/validation";
+import { sendContactMessage } from "~/lib/email.server";
 
 export function meta({}: Route.MetaArgs) {
   return buildMeta({
     title: "Contact — shiftshappn",
-    description: "Get in touch with the shiftshappn team. We're here to help with orders, sizing, and more.",
+    description:
+      "Get in touch with the shiftshappn team. We're here to help with orders, sizing, and more.",
     path: "/contact",
   });
 }
 
 export async function action({ request }: Route.ActionArgs) {
-  const formData = await request.formData();
-  const name = formData.get("name");
-  const email = formData.get("email");
-  const message = formData.get("message");
-
-  if (!name || !email || !message) {
-    return { error: "Please fill in all fields." };
+  const limited = await rateLimit(request, "contact", {
+    limit: 5,
+    windowMs: 60_000,
+  });
+  if (!limited.ok) {
+    return data({ error: limited.error }, { status: 429 });
   }
 
-  // In production, send via email service or CRM integration
-  console.log("[contact]", { name, email, message });
+  const formData = await request.formData();
+  const honeypot = String(formData.get("website") ?? "").trim();
+  if (honeypot) {
+    return { success: true };
+  }
 
-  return { success: true };
+  const name = trimToMax(String(formData.get("name") ?? ""), MAX_NAME_LENGTH);
+  const email = normalizeEmail(String(formData.get("email") ?? ""));
+  const message = trimToMax(String(formData.get("message") ?? ""), 5000);
+
+  const nameError = validateName(name);
+  if (nameError) return data({ error: nameError }, { status: 400 });
+  if (!email || !isValidEmail(email)) {
+    return data({ error: "Enter a valid email address." }, { status: 400 });
+  }
+  if (!message || message.length < 10) {
+    return data({ error: "Message must be at least 10 characters." }, { status: 400 });
+  }
+
+  try {
+    await sendContactMessage({ name, email, message });
+    return { success: true };
+  } catch (error) {
+    console.error("[contact]", error);
+    return data(
+      {
+        error:
+          "We couldn't send your message right now. Please email hello@shiftshappn.com.",
+      },
+      { status: 503 }
+    );
+  }
 }
 
 export default function Contact({ actionData }: Route.ComponentProps) {
@@ -36,22 +73,28 @@ export default function Contact({ actionData }: Route.ComponentProps) {
         Have a question about your order, sizing, or our products? We'd love to hear from you.
       </p>
 
-      {actionData?.success && (
-        <div className="mb-6 p-4 rounded-lg bg-sage/20 text-charcoal text-sm">
+      {actionData && "success" in actionData && actionData.success ? (
+        <div className="mb-6 p-4 rounded-lg bg-sage/20 text-charcoal text-sm" role="status">
           Thanks for reaching out! We'll get back to you within 1–2 business days.
         </div>
-      )}
+      ) : null}
 
-      {actionData?.error && (
-        <div className="mb-6 p-4 rounded-lg bg-red-50 text-red-700 text-sm">
+      {actionData && "error" in actionData && actionData.error ? (
+        <div className="mb-6 p-4 rounded-lg bg-red-50 text-red-700 text-sm" role="alert">
           {actionData.error}
         </div>
-      )}
+      ) : null}
 
       <Form method="post" className="space-y-5">
-        <Input label="Name" name="name" required />
+        <div className="hidden" aria-hidden="true">
+          <label>
+            Website
+            <input type="text" name="website" tabIndex={-1} autoComplete="off" />
+          </label>
+        </div>
+        <Input label="Name" name="name" required maxLength={MAX_NAME_LENGTH} />
         <Input label="Email" name="email" type="email" required />
-        <Textarea label="Message" name="message" required rows={5} />
+        <Textarea label="Message" name="message" required rows={5} maxLength={5000} />
         <Button type="submit" variant="terracotta">
           Send message
         </Button>

@@ -11,6 +11,7 @@ import { DEFAULT_GIFT_CARD_SHOP } from "~/lib/gift-card.shared";
 import { loadGiftCardShopSettings } from "~/lib/gift-card.server";
 import { buildMeta } from "~/lib/seo";
 import { formatCurrency } from "~/lib/utils";
+import { MAX_GIFT_NOTE_LENGTH, MAX_LINE_QTY, isValidEmail } from "~/lib/validation";
 
 export function meta({}: Route.MetaArgs) {
   return buildMeta({
@@ -36,10 +37,20 @@ export async function action({ request }: Route.ActionArgs) {
     return { error: "Gift cards are unavailable right now." };
   }
 
+  const { rateLimit } = await import("~/lib/checkout-security.server");
+  const limited = await rateLimit(request, "gift-balance", {
+    limit: 20,
+    windowMs: 60_000,
+  });
+  if (!limited.ok) return { error: limited.error };
+
   const formData = await request.formData();
   const code = String(formData.get("code") ?? "").trim().toUpperCase();
   if (!code) {
     return { error: "Enter a gift card code." };
+  }
+  if (code.length > 40) {
+    return { error: "That gift card code looks invalid." };
   }
 
   const card = await db.giftCard.findUnique({ where: { code } });
@@ -78,19 +89,50 @@ export default function GiftCards({ loaderData }: Route.ComponentProps) {
   const [sendAsGift, setSendAsGift] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState("");
   const [giftNote, setGiftNote] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<{
+    recipientEmail?: string;
+    form?: string;
+  }>({});
   const addGiftCard = useCart((s) => s.addGiftCard);
   const openCart = useCart((s) => s.openCart);
 
   function handleAddToCart() {
-    if (!settings.sellEnabled) return;
-    if (sendAsGift && !recipientEmail.trim()) return;
+    const nextErrors: { recipientEmail?: string; form?: string } = {};
+    if (!settings.sellEnabled) {
+      nextErrors.form = "Gift cards are not available for purchase right now.";
+      setFieldErrors(nextErrors);
+      return;
+    }
+    if (!denominations.includes(amount)) {
+      nextErrors.form = "Choose a valid gift card amount.";
+      setFieldErrors(nextErrors);
+      return;
+    }
+    if (sendAsGift) {
+      const email = recipientEmail.trim();
+      if (!email) {
+        nextErrors.recipientEmail = "Recipient email is required.";
+      } else if (!isValidEmail(email)) {
+        nextErrors.recipientEmail = "Enter a valid recipient email.";
+      }
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors);
+      return;
+    }
 
-    addGiftCard({
+    const result = addGiftCard({
       amount,
       recipientEmail: sendAsGift ? recipientEmail.trim() : undefined,
-      giftNote: sendAsGift ? giftNote.trim() : undefined,
-      quantity,
+      giftNote: sendAsGift ? giftNote.trim().slice(0, MAX_GIFT_NOTE_LENGTH) : undefined,
+      quantity: Math.min(quantity, MAX_LINE_QTY),
+      denominations,
     });
+    if (!result.ok) {
+      setFieldErrors({ form: result.error });
+      return;
+    }
+    setFieldErrors({});
     openCart();
   }
 
@@ -153,8 +195,11 @@ export default function GiftCards({ loaderData }: Route.ComponentProps) {
                 <span className="w-10 text-center text-sm font-medium">{quantity}</span>
                 <button
                   type="button"
-                  onClick={() => setQuantity((q) => q + 1)}
-                  className="flex h-11 w-11 items-center justify-center text-charcoal/70 hover:text-charcoal"
+                  onClick={() =>
+                    setQuantity((q) => Math.min(MAX_LINE_QTY, q + 1))
+                  }
+                  disabled={quantity >= MAX_LINE_QTY}
+                  className="flex h-11 w-11 items-center justify-center text-charcoal/70 hover:text-charcoal disabled:opacity-40"
                   aria-label="Increase quantity"
                 >
                   <Plus className="h-4 w-4" />
@@ -179,21 +224,39 @@ export default function GiftCards({ loaderData }: Route.ComponentProps) {
                   name="recipientEmail"
                   type="email"
                   value={recipientEmail}
-                  onChange={(e) => setRecipientEmail(e.target.value)}
+                  onChange={(e) => {
+                    setRecipientEmail(e.target.value);
+                    setFieldErrors((prev) => ({ ...prev, recipientEmail: undefined }));
+                  }}
                   required={sendAsGift}
+                  aria-invalid={Boolean(fieldErrors.recipientEmail)}
                 />
+                {fieldErrors.recipientEmail ? (
+                  <p className="text-sm text-terracotta" role="alert">
+                    {fieldErrors.recipientEmail}
+                  </p>
+                ) : null}
                 <label className="block text-sm">
                   <span className="mb-1.5 block font-medium text-charcoal">Gift message</span>
                   <textarea
                     value={giftNote}
-                    onChange={(e) => setGiftNote(e.target.value)}
+                    onChange={(e) =>
+                      setGiftNote(e.target.value.slice(0, MAX_GIFT_NOTE_LENGTH))
+                    }
                     rows={3}
+                    maxLength={MAX_GIFT_NOTE_LENGTH}
                     className="w-full rounded-lg border border-charcoal/20 px-3 py-2.5 text-sm"
                     placeholder="Happy graduation — pick your favourite scrubs."
                   />
                 </label>
               </div>
             )}
+
+            {fieldErrors.form ? (
+              <p className="mt-4 text-sm text-terracotta" role="alert">
+                {fieldErrors.form}
+              </p>
+            ) : null}
 
             {settings.sellEnabled ? (
               <Button
