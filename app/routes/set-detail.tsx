@@ -280,6 +280,7 @@ export default function SetDetail({ loaderData }: Route.ComponentProps) {
   const { set, cloudName, initialColor, wearWith, reviews, avgRating, reviewer } = loaderData;
   const actionData = useActionData<typeof action>();
   const addSet = useCart((state) => state.addSet);
+  const cartItems = useCart((state) => state.items);
   const [searchParams, setSearchParams] = useSearchParams();
   const [topSize, setTopSize] = useState<string | null>(null);
   const [pantsSize, setPantsSize] = useState<string | null>(null);
@@ -348,6 +349,11 @@ export default function SetDetail({ loaderData }: Route.ComponentProps) {
   function handleAdd() {
     if (!topVariant || !pantsVariant || !selectedColor) return;
     const groupId = `${set.slug}:${topVariant.id}:${pantsVariant.id}`;
+    const existingQty = cartItems
+      .filter((item) => item.setGroupId === groupId && !item.packGroupId)
+      .reduce((sum, item) => Math.max(sum, item.quantity), 0);
+    const qty = Math.min(quantity, maxQty, Math.max(0, maxQty - existingQty));
+    if (qty <= 0) return;
     const topImage = topVariant.images[0];
     const pantsImage = pantsVariant.images[0] ?? topImage;
     const shares = piecePrices(
@@ -368,7 +374,8 @@ export default function SetDetail({ loaderData }: Route.ComponentProps) {
         price: shares.top,
         imagePublicId: topImage?.publicId,
         imageAlt: topImage?.altText || `${set.name} top`,
-        quantity,
+        quantity: qty,
+        maxQty,
       },
       {
         setGroupId: groupId,
@@ -381,7 +388,8 @@ export default function SetDetail({ loaderData }: Route.ComponentProps) {
         price: shares.pants,
         imagePublicId: pantsImage?.publicId,
         imageAlt: pantsImage?.altText || `${set.name} pants`,
-        quantity,
+        quantity: qty,
+        maxQty,
       },
     ]);
   }

@@ -167,6 +167,8 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
     loaderData;
   const actionData = useActionData<typeof action>();
   const addItem = useCart((s) => s.addItem);
+  const cartItems = useCart((s) => s.items);
+  const [cartError, setCartError] = useState<string | null>(null);
   const colors = getProductColors(product);
   const [, setSearchParams] = useSearchParams();
   const isAccessory = isAccessoriesCategory(product.category);
@@ -239,8 +241,24 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
 
   function handleAddToCart() {
     if (!selectedVariant) return;
+    setCartError(null);
+    const existingQty = cartItems
+      .filter(
+        (item) =>
+          item.variantId === selectedVariant.id &&
+          !item.setGroupId &&
+          !item.packGroupId
+      )
+      .reduce((sum, item) => sum + item.quantity, 0);
+    const stockCap = Math.max(0, selectedVariant.inventoryQty);
+    const remaining = stockCap - existingQty;
+    if (remaining <= 0) {
+      setCartError("That size is already at the maximum quantity in your cart.");
+      return;
+    }
+    const qty = Math.min(quantity, remaining, Math.min(9, maxQty));
     const image = selectedVariant.images[0] ?? images[0];
-    addItem({
+    const result = addItem({
       variantId: selectedVariant.id,
       productId: product.id,
       productName: product.name,
@@ -253,8 +271,10 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
       price: selectedVariant.price,
       imagePublicId: image?.publicId,
       imageAlt: image?.altText,
-      quantity,
+      quantity: qty,
+      maxQty: stockCap,
     });
+    if (!result.ok) setCartError(result.error);
   }
 
   const cloud = cloudName ?? "demo";
@@ -483,6 +503,11 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
                   {addLabel}
                 </button>
               </div>
+              {cartError ? (
+                <p className="mt-2 text-center text-[12px] text-terracotta" role="alert">
+                  {cartError}
+                </p>
+              ) : null}
               <p className="mt-3 text-center text-[12px] text-charcoal/45">
                 HST applied at checkout.{" "}
                 <Link to="/policies/returns" className="underline underline-offset-4 hover:text-navy">

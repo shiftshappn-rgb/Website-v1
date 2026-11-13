@@ -1,5 +1,13 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import {
+  giftCardLineKey,
+  sanitizeCartItems,
+  validateGiftCardAdd,
+  type CartActionResult,
+  type SanitizedCartItem,
+} from "~/lib/cart-validation";
+import { MAX_LINE_QTY, clampQuantity } from "~/lib/validation";
 
 export type CartItemKind = "product" | "gift_card";
 
@@ -20,20 +28,28 @@ export type CartItem = {
   giftAmount?: number;
   recipientEmail?: string;
   giftNote?: string;
+  maxQty?: number;
 };
 
 type CartState = {
   items: CartItem[];
   isOpen: boolean;
-  addItem: (item: Omit<CartItem, "quantity"> & { quantity?: number }) => void;
-  addSet: (lines: Array<Omit<CartItem, "quantity"> & { quantity?: number }>) => void;
-  addPack: (lines: Array<Omit<CartItem, "quantity"> & { quantity?: number }>) => void;
+  addItem: (
+    item: Omit<CartItem, "quantity"> & { quantity?: number }
+  ) => CartActionResult;
+  addSet: (
+    lines: Array<Omit<CartItem, "quantity"> & { quantity?: number }>
+  ) => CartActionResult;
+  addPack: (
+    lines: Array<Omit<CartItem, "quantity"> & { quantity?: number }>
+  ) => CartActionResult;
   addGiftCard: (item: {
     amount: number;
     recipientEmail?: string;
     giftNote?: string;
     quantity?: number;
-  }) => void;
+    denominations?: number[];
+  }) => CartActionResult;
   removeItem: (variantId: string, setGroupId?: string, packGroupId?: string) => void;
   updateQuantity: (
     variantId: string,
@@ -61,6 +77,17 @@ function normalizeItem(
   };
 }
 
+function lineCap(item: { maxQty?: number }): number {
+  if (item.maxQty != null && Number.isFinite(item.maxQty) && item.maxQty > 0) {
+    return Math.min(MAX_LINE_QTY, Math.trunc(item.maxQty));
+  }
+  return MAX_LINE_QTY;
+}
+
+function mergeQty(existing: number, incoming: number, cap: number): number {
+  return Math.min(cap, existing + incoming);
+}
+
 export const useCart = create<CartState>()(
   persist(
     (set, get) => ({
@@ -68,11 +95,21 @@ export const useCart = create<CartState>()(
       isOpen: false,
 
       addItem: (item) => {
+        const qty = clampQuantity(item.quantity ?? 1);
+        if (qty == null) {
+          return { ok: false, error: `Quantity must be between 1 and ${MAX_LINE_QTY}.` };
+        }
+        if (!Number.isFinite(item.price) || item.price < 0) {
+          return { ok: false, error: "Invalid item price." };
+        }
+        if (!item.variantId?.trim() || !item.productId?.trim()) {
+          return { ok: false, error: "Invalid product." };
+        }
+
+        const normalized = normalizeItem({ ...item, quantity: qty });
+        const cap = lineCap(normalized);
+
         set((state) => {
-          const normalized = normalizeItem({
-            ...item,
-            kind: item.kind ?? "product",
-          });
           const existing = state.items.find(
             (i) =>
               !i.setGroupId &&
@@ -85,7 +122,11 @@ export const useCart = create<CartState>()(
             return {
               items: state.items.map((i) =>
                 !i.setGroupId && !i.packGroupId && i.variantId === normalized.variantId
-                  ? { ...i, quantity: i.quantity + (item.quantity ?? 1) }
+                  ? {
+                      ...i,
+                      quantity: mergeQty(i.quantity, qty, lineCap(i)),
+                      maxQty: normalized.maxQty ?? i.maxQty,
+                    }
                   : i
               ),
               isOpen: true,
@@ -94,19 +135,33 @@ export const useCart = create<CartState>()(
           return {
             items: [
               ...state.items,
-              { ...normalized, quantity: item.quantity ?? 1 },
+              {
+                ...normalized,
+                quantity: Math.min(qty, cap),
+              } as CartItem,
             ],
             isOpen: true,
           };
         });
+        return { ok: true };
       },
 
-      addGiftCard: ({ amount, recipientEmail, giftNote, quantity = 1 }) => {
-        const recipient = recipientEmail?.trim() || undefined;
-        const note = giftNote?.trim() || undefined;
-        const variantId = `gift-card-${amount}-${recipient?.toLowerCase() || "self"}-${note?.slice(0, 32) || ""}`;
+      addGiftCard: ({ amount, recipientEmail, giftNote, quantity = 1, denominations }) => {
+        const validated = validateGiftCardAdd({
+          amount,
+          recipientEmail,
+          giftNote,
+          quantity,
+          denominations,
+        });
+        if (!validated.ok) return validated;
 
-        get().addItem({
+        const recipient = validated.recipient;
+        const note = validated.note;
+        const qty = validated.quantity ?? 1;
+        const variantId = giftCardLineKey(amount, recipient, note);
+
+        return get().addItem({
           kind: "gift_card",
           variantId,
           productId: "gift-card",
@@ -116,17 +171,24 @@ export const useCart = create<CartState>()(
             : `E-gift · $${amount}`,
           colorHex: "#5ca8d6",
           price: amount,
-          quantity,
+          quantity: qty,
           giftAmount: amount,
           recipientEmail: recipient,
           giftNote: note,
+          maxQty: MAX_LINE_QTY,
         });
       },
 
       addSet: (lines) => {
         const groupId = lines[0]?.setGroupId;
-        if (!groupId || lines.length < 2) return;
-        const added = lines[0].quantity ?? 1;
+        if (!groupId || lines.length < 2) {
+          return { ok: false, error: "Incomplete scrub set." };
+        }
+        const added = clampQuantity(lines[0].quantity ?? 1);
+        if (added == null) {
+          return { ok: false, error: `Quantity must be between 1 and ${MAX_LINE_QTY}.` };
+        }
+
         set((state) => {
           const existing = state.items.some(
             (item) => item.setGroupId === groupId && !item.packGroupId
@@ -135,7 +197,10 @@ export const useCart = create<CartState>()(
             return {
               items: state.items.map((item) =>
                 item.setGroupId === groupId && !item.packGroupId
-                  ? { ...item, quantity: item.quantity + added }
+                  ? {
+                      ...item,
+                      quantity: mergeQty(item.quantity, added, lineCap(item)),
+                    }
                   : item
               ),
               isOpen: true,
@@ -144,27 +209,41 @@ export const useCart = create<CartState>()(
           return {
             items: [
               ...state.items,
-              ...lines.map((line) => ({
-                ...normalizeItem(line),
-                quantity: line.quantity ?? 1,
-              })),
+              ...lines.map((line) => {
+                const qty = clampQuantity(line.quantity ?? added) ?? added;
+                const cap = lineCap(line);
+                return {
+                  ...normalizeItem(line),
+                  quantity: Math.min(qty, cap),
+                } as CartItem;
+              }),
             ],
             isOpen: true,
           };
         });
+        return { ok: true };
       },
 
       addPack: (lines) => {
         const groupId = lines[0]?.packGroupId;
-        if (!groupId || lines.length < 1) return;
-        const added = lines[0].quantity ?? 1;
+        if (!groupId || lines.length < 1) {
+          return { ok: false, error: "Incomplete bundle." };
+        }
+        const added = clampQuantity(lines[0].quantity ?? 1);
+        if (added == null) {
+          return { ok: false, error: `Quantity must be between 1 and ${MAX_LINE_QTY}.` };
+        }
+
         set((state) => {
           const existing = state.items.some((item) => item.packGroupId === groupId);
           if (existing) {
             return {
               items: state.items.map((item) =>
                 item.packGroupId === groupId
-                  ? { ...item, quantity: item.quantity + added }
+                  ? {
+                      ...item,
+                      quantity: mergeQty(item.quantity, added, lineCap(item)),
+                    }
                   : item
               ),
               isOpen: true,
@@ -173,14 +252,19 @@ export const useCart = create<CartState>()(
           return {
             items: [
               ...state.items,
-              ...lines.map((line) => ({
-                ...normalizeItem(line),
-                quantity: line.quantity ?? 1,
-              })),
+              ...lines.map((line) => {
+                const qty = clampQuantity(line.quantity ?? added) ?? added;
+                const cap = lineCap(line);
+                return {
+                  ...normalizeItem(line),
+                  quantity: Math.min(qty, cap),
+                } as CartItem;
+              }),
             ],
             isOpen: true,
           };
         });
+        return { ok: true };
       },
 
       removeItem: (variantId, setGroupId, packGroupId) => {
@@ -188,28 +272,41 @@ export const useCart = create<CartState>()(
           items: state.items.filter((item) => {
             if (packGroupId) return item.packGroupId !== packGroupId;
             if (setGroupId) return Boolean(item.packGroupId) || item.setGroupId !== setGroupId;
-            return Boolean(item.packGroupId) || Boolean(item.setGroupId) || item.variantId !== variantId;
+            return (
+              Boolean(item.packGroupId) ||
+              Boolean(item.setGroupId) ||
+              item.variantId !== variantId
+            );
           }),
         }));
       },
 
       updateQuantity: (variantId, quantity, setGroupId, packGroupId) => {
-        if (quantity <= 0) {
+        if (!Number.isFinite(quantity) || quantity <= 0) {
           get().removeItem(variantId, setGroupId, packGroupId);
           return;
         }
+
         set((state) => ({
           items: state.items.map((item) => {
+            const nextQty = Math.min(
+              lineCap(item),
+              Math.max(1, Math.trunc(quantity))
+            );
             if (packGroupId) {
-              return item.packGroupId === packGroupId ? { ...item, quantity } : item;
+              return item.packGroupId === packGroupId
+                ? { ...item, quantity: nextQty }
+                : item;
             }
             if (setGroupId) {
               return !item.packGroupId && item.setGroupId === setGroupId
-                ? { ...item, quantity }
+                ? { ...item, quantity: nextQty }
                 : item;
             }
-            return !item.setGroupId && !item.packGroupId && item.variantId === variantId
-              ? { ...item, quantity }
+            return !item.setGroupId &&
+              !item.packGroupId &&
+              item.variantId === variantId
+              ? { ...item, quantity: nextQty }
               : item;
           }),
         }));
@@ -221,10 +318,17 @@ export const useCart = create<CartState>()(
       toggleCart: () => set((state) => ({ isOpen: !state.isOpen })),
 
       subtotal: () =>
-        get().items.reduce((sum, item) => sum + item.price * item.quantity, 0),
+        get().items.reduce((sum, item) => {
+          const price = Number.isFinite(item.price) ? item.price : 0;
+          const qty = Number.isFinite(item.quantity) ? item.quantity : 0;
+          return sum + price * qty;
+        }, 0),
 
       itemCount: () =>
-        get().items.reduce((sum, item) => sum + item.quantity, 0),
+        get().items.reduce((sum, item) => {
+          const qty = Number.isFinite(item.quantity) ? item.quantity : 0;
+          return sum + qty;
+        }, 0),
 
       hasGiftCards: () =>
         get().items.some((item) => (item.kind ?? "product") === "gift_card"),
@@ -237,7 +341,27 @@ export const useCart = create<CartState>()(
         return items.length > 0 && items.every((item) => item.kind === "gift_card");
       },
     }),
-    { name: "shiftshappn-cart" }
+    {
+      name: "shiftshappn-cart",
+      version: 2,
+      migrate: (persisted) => {
+        const state = persisted as { items?: unknown } | undefined;
+        return {
+          items: sanitizeCartItems(state?.items) as CartItem[],
+          isOpen: false,
+        };
+      },
+      merge: (persisted, current) => {
+        const raw = persisted as Partial<CartState> | undefined;
+        const items = sanitizeCartItems(raw?.items ?? current.items) as CartItem[];
+        return {
+          ...current,
+          ...raw,
+          items,
+        };
+      },
+    }
   )
 );
 
+export type { SanitizedCartItem, CartActionResult };

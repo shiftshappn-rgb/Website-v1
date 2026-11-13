@@ -145,6 +145,20 @@ export default function CheckoutPhase3() {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
   const [piLoading, setPiLoading] = useState(false);
+  const [serverTotals, setServerTotals] = useState<{
+    subtotal?: number;
+    discountAmount?: number;
+    giftCardAmount?: number;
+    shippingCost?: number;
+    tax?: number;
+    total?: number;
+  } | null>(null);
+  const [idempotencyKey] = useState(() => {
+    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+      return crypto.randomUUID();
+    }
+    return `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  });
   const paymentRef = useRef<StripePaymentSectionHandle>(null);
 
   const totals = useMemo(() => {
@@ -159,8 +173,18 @@ export default function CheckoutPhase3() {
         taxRatePercent,
       };
     }
-    return computeTotals(phase1, phase2, taxRatePercent);
-  }, [phase1, phase2, taxRatePercent]);
+    const local = computeTotals(phase1, phase2, taxRatePercent);
+    if (!serverTotals) return local;
+    return {
+      ...local,
+      subtotal: serverTotals.subtotal ?? local.subtotal,
+      discountAmount: serverTotals.discountAmount ?? local.discountAmount,
+      giftCardAmount: serverTotals.giftCardAmount ?? local.giftCardAmount,
+      shippingCost: serverTotals.shippingCost ?? local.shippingCost,
+      tax: serverTotals.tax ?? local.tax,
+      total: serverTotals.total ?? local.total,
+    };
+  }, [phase1, phase2, taxRatePercent, serverTotals]);
 
   const needsCard = totals.total > 0;
 
@@ -197,6 +221,12 @@ export default function CheckoutPhase3() {
           error?: string;
           clientSecret?: string | null;
           paymentIntentId?: string | null;
+          subtotal?: number;
+          discountAmount?: number;
+          giftCardAmount?: number;
+          shippingCost?: number;
+          tax?: number;
+          total?: number;
         } = {};
         try {
           result = await response.json();
@@ -215,6 +245,14 @@ export default function CheckoutPhase3() {
         }
         setClientSecret(result.clientSecret ?? null);
         setPaymentIntentId(result.paymentIntentId ?? null);
+        setServerTotals({
+          subtotal: result.subtotal,
+          discountAmount: result.discountAmount,
+          giftCardAmount: result.giftCardAmount,
+          shippingCost: result.shippingCost,
+          tax: result.tax,
+          total: result.total,
+        });
       })
       .catch(() => {
         if (!cancelled) setError("Network error starting payment.");
@@ -270,6 +308,7 @@ export default function CheckoutPhase3() {
       body.append("phase2", JSON.stringify(phase2));
       body.append("cartItems", JSON.stringify(lineItems));
       body.append("agreePolicies", "on");
+      body.append("idempotencyKey", idempotencyKey);
       if (newsOptIn) body.append("marketingOptIn", "on");
       if (confirmedPaymentIntentId) {
         body.append("paymentIntentId", confirmedPaymentIntentId);

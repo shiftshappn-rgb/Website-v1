@@ -52,10 +52,24 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  const { rateLimit } = await import("~/lib/checkout-security.server");
+  const limited = await rateLimit(request, "auth-login", {
+    limit: 15,
+    windowMs: 60_000,
+  });
+  if (!limited.ok) {
+    return data(
+      { error: limited.error, fieldErrors: null, values: { email: "" } },
+      { status: 429 }
+    );
+  }
+
   const formData = await request.formData();
   const email = (formData.get("email") as string)?.trim().toLowerCase();
   const password = formData.get("password") as string;
-  const redirectTo = (formData.get("redirectTo") as string) || "/account";
+  const redirectTo = safeRedirectPath(
+    (formData.get("redirectTo") as string) || "/account"
+  );
 
   const fieldErrors = validateLoginFields({ email, password });
   if (hasFieldErrors(fieldErrors)) {

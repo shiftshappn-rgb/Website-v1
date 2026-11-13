@@ -5,6 +5,10 @@ import { tryDb } from "~/db.server";
 import { buildMeta } from "~/lib/seo";
 import { Input } from "~/components/ui/Input";
 import { Button } from "~/components/ui/Button";
+import {
+  MAX_ADDRESS_COUNT,
+  validateAddress,
+} from "~/lib/validation";
 
 export function meta({}: Route.MetaArgs) {
   return buildMeta({
@@ -43,13 +47,22 @@ export async function action({ request }: Route.ActionArgs) {
   const intent = formData.get("intent");
 
   if (intent === "delete") {
-    const id = formData.get("id") as string;
+    const id = String(formData.get("id") ?? "").trim();
+    if (!id) return data({ error: "Address not found." }, { status: 400 });
     await db.address.deleteMany({ where: { id, customerId: customer.id } });
     return { success: true };
   }
 
   if (intent === "setDefault") {
-    const id = formData.get("id") as string;
+    const id = String(formData.get("id") ?? "").trim();
+    if (!id) return data({ error: "Address not found." }, { status: 400 });
+    const owned = await db.address.findFirst({
+      where: { id, customerId: customer.id },
+      select: { id: true },
+    });
+    if (!owned) {
+      return data({ error: "Address not found." }, { status: 404 });
+    }
     const addresses = await db.address.findMany({
       where: { customerId: customer.id },
       select: { id: true },
@@ -63,24 +76,47 @@ export async function action({ request }: Route.ActionArgs) {
     return { success: true };
   }
 
-  const line1 = formData.get("line1") as string;
-  const city = formData.get("city") as string;
-  const province = formData.get("province") as string;
-  const postalCode = formData.get("postalCode") as string;
-
-  if (!line1 || !city || !province || !postalCode) {
-    return data({ error: "Please fill in required fields." }, { status: 400 });
+  const validated = validateAddress(
+    {
+      name: "Address",
+      line1: String(formData.get("line1") ?? ""),
+      line2: String(formData.get("line2") ?? ""),
+      city: String(formData.get("city") ?? ""),
+      province: String(formData.get("province") ?? ""),
+      postalCode: String(formData.get("postalCode") ?? ""),
+      country: String(formData.get("country") ?? "CA"),
+    },
+    { requireName: false, requirePhone: false }
+  );
+  if (!validated.ok) {
+    return data(
+      {
+        error: Object.values(validated.fieldErrors)[0] ?? "Invalid address.",
+        fieldErrors: validated.fieldErrors,
+      },
+      { status: 400 }
+    );
   }
 
-  const addressId = formData.get("id") as string | null;
+  const addressId = (formData.get("id") as string | null)?.trim() || null;
+  if (!addressId) {
+    const count = await db.address.count({ where: { customerId: customer.id } });
+    if (count >= MAX_ADDRESS_COUNT) {
+      return data(
+        { error: `You can save up to ${MAX_ADDRESS_COUNT} addresses.` },
+        { status: 400 }
+      );
+    }
+  }
+
   const payload = {
-    label: (formData.get("label") as string) || null,
-    line1,
-    line2: (formData.get("line2") as string) || null,
-    city,
-    province,
-    postalCode,
-    country: (formData.get("country") as string) || "CA",
+    label: String(formData.get("label") ?? "").trim() || null,
+    line1: validated.value.line1,
+    line2: validated.value.line2 || null,
+    city: validated.value.city,
+    province: validated.value.province,
+    postalCode: validated.value.postalCode,
+    country: validated.value.country,
     isDefault: formData.get("isDefault") === "on",
   };
 

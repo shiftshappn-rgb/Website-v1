@@ -25,6 +25,7 @@ export async function createCheckoutPaymentIntent(input: {
   amountCad: number;
   email: string;
   metadata?: Record<string, string>;
+  idempotencyKey?: string;
 }): Promise<Stripe.PaymentIntent> {
   const stripeClient = getStripe();
   const amount = dollarsToCents(input.amountCad);
@@ -32,17 +33,22 @@ export async function createCheckoutPaymentIntent(input: {
     throw new Error("Payment amount must be at least $0.50 CAD.");
   }
 
-  return stripeClient.paymentIntents.create({
-    amount,
-    currency: "cad",
-    receipt_email: input.email || undefined,
-    automatic_payment_methods: { enabled: true },
-    metadata: {
-      source: "checkout_payment",
-      email: input.email,
-      ...(input.metadata ?? {}),
+  return stripeClient.paymentIntents.create(
+    {
+      amount,
+      currency: "cad",
+      receipt_email: input.email || undefined,
+      automatic_payment_methods: { enabled: true },
+      metadata: {
+        source: "checkout_payment",
+        email: input.email,
+        ...(input.metadata ?? {}),
+      },
     },
-  });
+    input.idempotencyKey
+      ? { idempotencyKey: input.idempotencyKey.slice(0, 255) }
+      : undefined
+  );
 }
 
 export async function retrieveSucceededPaymentIntent(

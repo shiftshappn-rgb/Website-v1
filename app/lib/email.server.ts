@@ -17,6 +17,31 @@ function getFromAddress() {
   return (process.env.EMAIL_FROM ?? DEFAULT_FROM).trim() || DEFAULT_FROM;
 }
 
+export async function sendContactMessage(input: {
+  name: string;
+  email: string;
+  message: string;
+}): Promise<void> {
+  const supportTo =
+    (process.env.SUPPORT_EMAIL ?? process.env.CONTACT_EMAIL ?? "").trim() ||
+    "hello@shiftshappn.com";
+  const sent = await sendEmail({
+    to: supportTo,
+    label: "contact form",
+    subject: `Contact form: ${input.name}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#1C2B36">
+        <h1 style="color:#1D4E78;font-family:serif">New contact message</h1>
+        <p><strong>From:</strong> ${escapeHtml(input.name)} &lt;${escapeHtml(input.email)}&gt;</p>
+        <p style="white-space:pre-wrap">${escapeHtml(input.message)}</p>
+      </div>
+    `,
+  });
+  if (!sent) {
+    throw new Error("Contact email could not be sent.");
+  }
+}
+
 async function sendEmail(input: {
   to: string | string[];
   subject: string;

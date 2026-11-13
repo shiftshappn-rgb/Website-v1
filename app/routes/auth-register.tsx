@@ -38,13 +38,35 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  const { rateLimit } = await import("~/lib/checkout-security.server");
+  const limited = await rateLimit(request, "auth-register", {
+    limit: 8,
+    windowMs: 60_000,
+  });
+  if (!limited.ok) {
+    return data(
+      {
+        error: limited.error,
+        fieldErrors: null,
+        values: { name: "", email: "" },
+      },
+      { status: 429 }
+    );
+  }
+
   const formData = await request.formData();
   const name = (formData.get("name") as string)?.trim();
   const email = (formData.get("email") as string)?.trim().toLowerCase();
   const password = formData.get("password") as string;
+  const confirmPassword = formData.get("confirmPassword") as string | null;
   const marketingOptIn = formData.get("marketingOptIn") === "on";
 
-  const fieldErrors = validateRegisterFields({ email, password, name });
+  const fieldErrors = validateRegisterFields({
+    email,
+    password,
+    name,
+    ...(confirmPassword != null ? { confirmPassword } : {}),
+  });
   if (hasFieldErrors(fieldErrors)) {
     return data(
       {

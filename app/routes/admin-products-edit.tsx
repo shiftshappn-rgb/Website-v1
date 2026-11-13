@@ -464,14 +464,25 @@ async function runProductEditAction(
   }
 
   if (intent === "add-variant") {
+    const { isHexColor, parseIntStrict, parseMoney } = await import("~/lib/validation");
     const colorName = String(formData.get("colorName") ?? "").trim();
     const colorHex = String(formData.get("colorHex") ?? "#000000").trim();
     const size = String(formData.get("size") ?? "").trim();
     const priceOverrideRaw = String(formData.get("priceOverride") ?? "").trim();
-    const inventoryQty = parseInt(String(formData.get("inventoryQty") ?? "0"), 10);
+    const inventoryQty = parseIntStrict(formData.get("inventoryQty") ?? "0");
+    const priceOverride = priceOverrideRaw ? parseMoney(priceOverrideRaw) : null;
 
     if (!colorName || !size) {
       return { error: "Colour and size are required for new variants." };
+    }
+    if (!isHexColor(colorHex)) {
+      return { error: "Colour must be a valid hex value (e.g. #1b2a4a)." };
+    }
+    if (inventoryQty == null || inventoryQty < 0) {
+      return { error: "Inventory must be a non-negative integer." };
+    }
+    if (priceOverrideRaw && (priceOverride == null || priceOverride < 0)) {
+      return { error: "Price override must be a valid non-negative amount." };
     }
 
     const product = await db.product.findUnique({
@@ -504,8 +515,8 @@ async function runProductEditAction(
           colorHex,
           size,
           sku,
-          priceOverride: priceOverrideRaw ? parseFloat(priceOverrideRaw) : null,
-          inventoryQty: Number.isNaN(inventoryQty) ? 0 : inventoryQty,
+          priceOverride,
+          inventoryQty,
           images,
         },
       });

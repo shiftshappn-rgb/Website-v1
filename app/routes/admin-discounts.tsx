@@ -8,6 +8,49 @@ import { db, isDatabaseAvailable } from "~/db.server";
 import { formatCurrency } from "~/lib/utils";
 import { requireAdmin } from "~/lib/session.server";
 import type { DiscountType } from "@prisma/client";
+import { parseIntStrict, parseMoney } from "~/lib/validation";
+
+const DISCOUNT_TYPES = new Set<DiscountType>(["percent", "fixed", "free_shipping"]);
+
+function parseDiscountFields(formData: FormData) {
+  const code = String(formData.get("code") ?? "").trim().toUpperCase();
+  const typeRaw = String(formData.get("type") ?? "percent");
+  const type = DISCOUNT_TYPES.has(typeRaw as DiscountType)
+    ? (typeRaw as DiscountType)
+    : null;
+  const value = parseMoney(formData.get("value") ?? "0");
+  const minSpendRaw = String(formData.get("minSpend") ?? "").trim();
+  const minSpend = minSpendRaw ? parseMoney(minSpendRaw) : null;
+  const expiresAtRaw = String(formData.get("expiresAt") ?? "").trim();
+  const expiresAt = expiresAtRaw ? new Date(expiresAtRaw) : null;
+  const usageLimitRaw = String(formData.get("usageLimit") ?? "").trim();
+  const usageLimit = usageLimitRaw ? parseIntStrict(usageLimitRaw) : null;
+
+  if (!code) return { error: "Discount code is required." as const };
+  if (!type) return { error: "Choose a valid discount type." as const };
+  if (value == null || value < 0) return { error: "Enter a valid discount value." as const };
+  if (type === "percent" && value > 100) {
+    return { error: "Percent discounts cannot exceed 100." as const };
+  }
+  if (minSpendRaw && (minSpend == null || minSpend < 0)) {
+    return { error: "Minimum spend must be a valid amount." as const };
+  }
+  if (usageLimitRaw && (usageLimit == null || usageLimit < 1)) {
+    return { error: "Usage limit must be a positive integer." as const };
+  }
+  if (expiresAtRaw && (!expiresAt || Number.isNaN(expiresAt.getTime()))) {
+    return { error: "Enter a valid expiry date." as const };
+  }
+
+  return {
+    code,
+    type,
+    value,
+    minSpend,
+    expiresAt,
+    usageLimit,
+  };
+}
 
 export async function loader({ request }: Route.LoaderArgs) {
   if (!isDatabaseAvailable()) {
@@ -65,45 +108,48 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   if (intent === "update") {
-    const id = String(formData.get("id") ?? "");
-    const code = String(formData.get("code") ?? "").trim().toUpperCase();
-    const type = String(formData.get("type") ?? "percent") as DiscountType;
-    const value = parseFloat(String(formData.get("value") ?? "0"));
-    const minSpendRaw = String(formData.get("minSpend") ?? "").trim();
-    const minSpend = minSpendRaw ? parseFloat(minSpendRaw) : null;
-    const expiresAtRaw = String(formData.get("expiresAt") ?? "").trim();
-    const expiresAt = expiresAtRaw ? new Date(expiresAtRaw) : null;
-    const usageLimitRaw = String(formData.get("usageLimit") ?? "").trim();
-    const usageLimit = usageLimitRaw ? parseInt(usageLimitRaw, 10) : null;
+    const id = String(formData.get("id") ?? "").trim();
+    if (!id) return { error: "Discount not found." };
+    const parsed = parseDiscountFields(formData);
+    if ("error" in parsed) return { error: parsed.error };
+
+    const clash = await db.discountCode.findFirst({
+      where: { code: parsed.code, NOT: { id } },
+      select: { id: true },
+    });
+    if (clash) return { error: "This discount code already exists." };
 
     await db.discountCode.update({
       where: { id },
-      data: { code, type, value, minSpend, expiresAt, usageLimit },
+      data: {
+        code: parsed.code,
+        type: parsed.type,
+        value: parsed.value,
+        minSpend: parsed.minSpend,
+        expiresAt: parsed.expiresAt,
+        usageLimit: parsed.usageLimit,
+      },
     });
     return redirect("/admin/discounts");
   }
 
-  const code = String(formData.get("code") ?? "").trim().toUpperCase();
-  const type = String(formData.get("type") ?? "percent") as DiscountType;
-  const value = parseFloat(String(formData.get("value") ?? "0"));
-  const minSpendRaw = String(formData.get("minSpend") ?? "").trim();
-  const minSpend = minSpendRaw ? parseFloat(minSpendRaw) : null;
-  const expiresAtRaw = String(formData.get("expiresAt") ?? "").trim();
-  const expiresAt = expiresAtRaw ? new Date(expiresAtRaw) : null;
-  const usageLimitRaw = String(formData.get("usageLimit") ?? "").trim();
-  const usageLimit = usageLimitRaw ? parseInt(usageLimitRaw, 10) : null;
+  const parsed = parseDiscountFields(formData);
+  if ("error" in parsed) return { error: parsed.error };
 
-  if (!code) {
-    return { error: "Discount code is required." };
-  }
-
-  const existing = await db.discountCode.findUnique({ where: { code } });
+  const existing = await db.discountCode.findUnique({ where: { code: parsed.code } });
   if (existing) {
     return { error: "This discount code already exists." };
   }
 
   await db.discountCode.create({
-    data: { code, type, value, minSpend, expiresAt, usageLimit },
+    data: {
+      code: parsed.code,
+      type: parsed.type,
+      value: parsed.value,
+      minSpend: parsed.minSpend,
+      expiresAt: parsed.expiresAt,
+      usageLimit: parsed.usageLimit,
+    },
   });
 
   return redirect("/admin/discounts");

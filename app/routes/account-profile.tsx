@@ -118,6 +118,12 @@ export async function action({ request }: Route.ActionArgs) {
   const name = String(formData.get("name") ?? "").trim();
   const marketingOptIn = formData.get("marketingOptIn") === "on";
 
+  const { validateName } = await import("~/lib/validation");
+  const nameError = validateName(name, { required: false });
+  if (nameError) {
+    return data({ error: nameError }, { status: 400 });
+  }
+
   await db.customer.update({
     where: { id: customer.id },
     data: {

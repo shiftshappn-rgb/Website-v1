@@ -4,7 +4,7 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import ws from "ws";
 
 /** Bump when Prisma schema gains fields that must invalidate a cached client. */
-const PRISMA_CLIENT_SCHEMA_VERSION = 5;
+const PRISMA_CLIENT_SCHEMA_VERSION = 6;
 
 declare global {
   // eslint-disable-next-line no-var
@@ -48,7 +48,9 @@ function clientHasCurrentSchema(client: PrismaClient) {
     typeof client.monthlyOffer?.findMany === "function" &&
     typeof client.giftCard?.findMany === "function" &&
     typeof client.communityPost?.findMany === "function" &&
-    typeof client.loyaltyLedger?.findMany === "function"
+    typeof client.loyaltyLedger?.findMany === "function" &&
+    typeof client.rateLimitBucket?.findMany === "function" &&
+    typeof client.newsletterSubscriber?.findMany === "function"
   );
 }
 

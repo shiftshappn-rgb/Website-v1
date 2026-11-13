@@ -15,6 +15,8 @@ import {
   hashPassword,
 } from "~/lib/session.server";
 import { claimGuestOrdersByEmail } from "~/lib/claim-orders.server";
+import { validatePasswordStrength } from "~/lib/auth-validation";
+import { rateLimit } from "~/lib/checkout-security.server";
 
 export function meta({}: Route.MetaArgs) {
   return buildMeta({
@@ -54,6 +56,14 @@ export async function action({ request }: Route.ActionArgs) {
     );
   }
 
+  const limited = await rateLimit(request, "auth-reset", {
+    limit: 10,
+    windowMs: 60_000,
+  });
+  if (!limited.ok) {
+    return data({ error: limited.error }, { status: 429 });
+  }
+
   const formData = await request.formData();
   const token = String(formData.get("token") ?? "").trim();
   const password = String(formData.get("password") ?? "");
@@ -62,11 +72,9 @@ export async function action({ request }: Route.ActionArgs) {
   if (!token) {
     return data({ error: "Reset link is missing or invalid." }, { status: 400 });
   }
-  if (password.length < 8) {
-    return data(
-      { error: "Password must be at least 8 characters." },
-      { status: 400 }
-    );
+  const strengthError = validatePasswordStrength(password);
+  if (strengthError) {
+    return data({ error: strengthError }, { status: 400 });
   }
   if (password !== confirm) {
     return data({ error: "Passwords do not match." }, { status: 400 });
